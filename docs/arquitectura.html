@@ -524,6 +524,7 @@
       <a href="#windows-iis">§18 PostgreSQL y conexión en Windows/IIS</a>
       <a href="#api-base-url">§19 La app y la API en producción</a>
       <a href="#firebase-setup">§20 Crear el proyecto de Firebase</a>
+      <a href="#whatsapp-setup">§21 Integración de WhatsApp Business API</a>
     </nav>
 
     <main>
@@ -3636,10 +3637,91 @@ void main() async {
         <p>Antes de depender de Celery y del backend completo (§8), conviene confirmar que la entrega funciona de forma aislada: Firebase Console → Cloud Messaging → "Enviar mensaje de prueba", pegando el token FCM que imprime la app en un dispositivo real (los emuladores/simuladores no siempre reciben push de forma confiable). Si ese mensaje de prueba llega, el problema de cualquier fallo posterior está en el backend o en la lógica de recordatorios — no en la configuración de Firebase.</p>
       </section>
 
+      <section id="whatsapp-setup">
+        <div class="sec-head"><span class="sec-num">§21</span><h2>Integración de WhatsApp Business API, paso a paso</h2></div>
+        <p>Es la tarea de la <b>Fase 0</b> (§4) con más tiempo de espera de todo el proyecto — la verificación de la empresa puede tardar días hábiles, así que conviene arrancarla antes que casi cualquier otra cosa. Se usa la <b>Cloud API de Meta directamente</b> (la misma de la §7), sin intermediario (BSP) de por medio.</p>
+
+        <h3>1. Business Manager y verificación de la empresa</h3>
+        <ol>
+          <li>Crear (o usar la existente) cuenta de negocio en <b>business.facebook.com</b>.</li>
+          <li>Configuración del negocio → <b>Verificación de la empresa</b>: nombre legal, NIT, dirección y documento de registro de la clínica.</li>
+          <li>Meta revisa esto en horas o varios días hábiles — es el paso que justifica arrancarlo desde la Fase 0 y no cuando ya se necesita enviar el primer mensaje real.</li>
+        </ol>
+
+        <h3>2. Cuenta de WhatsApp Business (WABA) y el número</h3>
+        <ol>
+          <li>Dentro del Business Manager: Cuentas de WhatsApp → crear una.</li>
+          <li>Agregar el número que va a enviar los mensajes. Tiene que estar <b>libre de cualquier otra cuenta de WhatsApp</b> — si ya está activo en la app personal o en WhatsApp Business App, hay que eliminarlo de ahí primero, o Meta no deja registrarlo aquí.</li>
+          <li>Verificar el número por SMS o llamada.</li>
+        </ol>
+
+        <h3>3. Crear la app en Meta for Developers</h3>
+        <ol>
+          <li><b>developers.facebook.com/apps</b> → Crear app → tipo "Business".</li>
+          <li>Agregar el producto <b>WhatsApp</b> → seleccionar el Business Manager y el WABA del paso 2.</li>
+          <li>Esto entrega tres cosas de una vez: el <b>Phone Number ID</b> (el que ya aparece en la URL de envío de la §7, <code>/{phone_number_id}/messages</code>), el <b>WABA ID</b>, y un token de acceso temporal de 24 horas — solo sirve para las primeras pruebas, no para producción.</li>
+        </ol>
+
+        <h3>4. Token de acceso permanente (System User)</h3>
+        <ol>
+          <li>Business Settings → Users → System Users → crear uno con rol <b>Admin</b>.</li>
+          <li>Asignarle acceso al WABA y a la app del paso 3.</li>
+          <li>Generar el token con los permisos <code>whatsapp_business_messaging</code> y <code>whatsapp_business_management</code>, de larga duración — este es el que usa el backend en producción, nunca el temporal de 24h del paso anterior.</li>
+        </ol>
+
+        <h3>5. Probar el envío antes de tocar el backend</h3>
+        <p>Meta da una plantilla de muestra ya aprobada, <code>hello_world</code>, pensada exactamente para esto: confirmar que el número y el token funcionan antes de esperar la aprobación de las plantillas propias.</p>
+        <pre class="code">curl -X POST "https://graph.facebook.com/v20.0/{phone_number_id}/messages" \
+  -H "Authorization: Bearer {token_temporal}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messaging_product": "whatsapp",
+    "to": "573001234567",
+    "type": "template",
+    "template": {"name": "hello_world", "language": {"code": "en_US"}}
+  }'</pre>
+        <p>Si este mensaje llega, cualquier falla después está en el backend o en las plantillas — no en la cuenta ni en el número.</p>
+
+        <h3>6. Crear y enviar a aprobación las plantillas de la §7</h3>
+        <ol>
+          <li>WhatsApp Manager → Message Templates → Create Template.</li>
+          <li>Crear las tres: <code>appointment_confirmation</code>, <code>appointment_reminder</code>, <code>appointment_reschedule</code> — categoría <b>Utility</b>, mismo cuerpo y variables ya definidos en la §7.</li>
+          <li>Enviar a revisión. La aprobación toma de horas a días; hasta entonces, <code>dispatch_due_reminders</code> (§8) no tiene ninguna plantilla real para enviar, solo <code>hello_world</code> de prueba.</li>
+        </ol>
+
+        <h3>7. Configurar el webhook</h3>
+        <ol>
+          <li>developers.facebook.com → la app → WhatsApp → Configuration → Webhook.</li>
+          <li>Callback URL: <code>https://appsintranet.esculapiosis.com/webhooks/whatsapp</code> — el dominio real confirmado en la §19.</li>
+          <li>Verify token: un valor propio (no lo genera Meta) que el backend compara en el handshake <code>GET</code> descrito en la §7.</li>
+          <li>Suscribirse al campo <code>messages</code> — cubre estados de entrega y mensajes entrantes en un solo webhook, tal como se diseñó en la §7.</li>
+        </ol>
+        <div class="callout alt">
+          <span class="label">Orden que importa</span>
+          Este paso exige que el backend ya esté desplegado (§18) y respondiendo el handshake <b>antes</b> de guardar la configuración del webhook — Meta verifica la URL en el momento de guardar, no después. No se puede configurar el webhook antes de tener el servidor arriba.
+        </div>
+
+        <h3>8. Guardar las credenciales</h3>
+        <p>Mismo patrón que <code>DATABASE_URL</code> (§18) y la credencial de Firebase (§20): en el <code>.env</code> protegido del servidor Windows, nunca en el repositorio.</p>
+        <pre class="code"># .env
+WHATSAPP_PHONE_NUMBER_ID=...
+WHATSAPP_ACCESS_TOKEN=...
+WHATSAPP_APP_SECRET=...          # el que valida X-Hub-Signature-256 (§7)
+WHATSAPP_WEBHOOK_VERIFY_TOKEN=...</pre>
+
+        <h3>9. Límite de mensajería y calidad del número</h3>
+        <p>Meta empieza con un límite de cuántas conversaciones se pueden <i>iniciar</i> en 24 horas, que sube automáticamente con el volumen, la calidad de las conversaciones y la verificación completa de la empresa del paso 1. WhatsApp Manager muestra un indicador de calidad del número (verde/amarillo/rojo); si cae a rojo, Meta puede pausar el envío. Vale la pena vigilarlo junto con las demás métricas de la §13, no es algo que se configure una sola vez y se olvide.</p>
+
+        <div class="callout">
+          <span class="label">Costos</span>
+          La Cloud API cobra por conversación de 24 horas según categoría y país, y Meta ajusta estas tarifas con cierta frecuencia — conviene revisar el valor vigente para Colombia en Business Manager → Facturación en el momento de presupuestar, en vez de asumir una cifra fija aquí que puede quedar desactualizada.
+        </div>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §20 añadida: pasos para crear el proyecto de Firebase (Fase 0) · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §21 añadida: integración de WhatsApp Business API paso a paso (Fase 0) · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>

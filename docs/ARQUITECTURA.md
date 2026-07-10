@@ -31,6 +31,7 @@
 18. [PostgreSQL y conexión: mismo servidor Windows con IIS](#18--postgresql-y-conexión-mismo-servidor-windows-con-iis)
 19. [La app y la API en producción](#19--la-app-y-la-api-en-producción)
 20. [Crear el proyecto de Firebase](#20--crear-el-proyecto-de-firebase)
+21. [Integración de WhatsApp Business API, paso a paso](#21--integración-de-whatsapp-business-api-paso-a-paso)
 
 ---
 
@@ -3221,6 +3222,87 @@ Requiere el paquete `firebase_core` además de `firebase_messaging` (ya listado 
 ### 6. Verificar antes de conectar todo el pipeline
 
 Antes de depender de Celery y del backend completo (§8), conviene confirmar que la entrega funciona de forma aislada: Firebase Console → Cloud Messaging → "Enviar mensaje de prueba", pegando el token FCM que imprime la app en un dispositivo real (los emuladores/simuladores no siempre reciben push de forma confiable). Si ese mensaje de prueba llega, el problema de cualquier fallo posterior está en el backend o en la lógica de recordatorios — no en la configuración de Firebase.
+
+---
+
+## §21 — Integración de WhatsApp Business API, paso a paso
+
+Es la tarea de la **Fase 0** (§4) con más tiempo de espera de todo el proyecto — la verificación de la empresa puede tardar días hábiles, así que conviene arrancarla antes que casi cualquier otra cosa. Se usa la **Cloud API de Meta directamente** (la misma de la §7), sin intermediario (BSP) de por medio.
+
+### 1. Business Manager y verificación de la empresa
+
+1. Crear (o usar la existente) cuenta de negocio en **business.facebook.com**.
+2. Configuración del negocio → **Verificación de la empresa**: nombre legal, NIT, dirección y documento de registro de la clínica.
+3. Meta revisa esto en horas o varios días hábiles — es el paso que justifica arrancarlo desde la Fase 0 y no cuando ya se necesita enviar el primer mensaje real.
+
+### 2. Cuenta de WhatsApp Business (WABA) y el número
+
+1. Dentro del Business Manager: Cuentas de WhatsApp → crear una.
+2. Agregar el número que va a enviar los mensajes. Tiene que estar **libre de cualquier otra cuenta de WhatsApp** — si ya está activo en la app personal o en WhatsApp Business App, hay que eliminarlo de ahí primero, o Meta no deja registrarlo aquí.
+3. Verificar el número por SMS o llamada.
+
+### 3. Crear la app en Meta for Developers
+
+1. **developers.facebook.com/apps** → Crear app → tipo "Business".
+2. Agregar el producto **WhatsApp** → seleccionar el Business Manager y el WABA del paso 2.
+3. Esto entrega tres cosas de una vez: el **Phone Number ID** (el que ya aparece en la URL de envío de la §7, `/{phone_number_id}/messages`), el **WABA ID**, y un token de acceso temporal de 24 horas — solo sirve para las primeras pruebas, no para producción.
+
+### 4. Token de acceso permanente (System User)
+
+1. Business Settings → Users → System Users → crear uno con rol **Admin**.
+2. Asignarle acceso al WABA y a la app del paso 3.
+3. Generar el token con los permisos `whatsapp_business_messaging` y `whatsapp_business_management`, de larga duración — este es el que usa el backend en producción, nunca el temporal de 24h del paso anterior.
+
+### 5. Probar el envío antes de tocar el backend
+
+Meta da una plantilla de muestra ya aprobada, `hello_world`, pensada exactamente para esto: confirmar que el número y el token funcionan antes de esperar la aprobación de las plantillas propias.
+
+```bash
+curl -X POST "https://graph.facebook.com/v20.0/{phone_number_id}/messages" \
+  -H "Authorization: Bearer {token_temporal}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messaging_product": "whatsapp",
+    "to": "573001234567",
+    "type": "template",
+    "template": {"name": "hello_world", "language": {"code": "en_US"}}
+  }'
+```
+
+Si este mensaje llega, cualquier falla después está en el backend o en las plantillas — no en la cuenta ni en el número.
+
+### 6. Crear y enviar a aprobación las plantillas de la §7
+
+1. WhatsApp Manager → Message Templates → Create Template.
+2. Crear las tres: `appointment_confirmation`, `appointment_reminder`, `appointment_reschedule` — categoría **Utility**, mismo cuerpo y variables ya definidos en la §7.
+3. Enviar a revisión. La aprobación toma de horas a días; hasta entonces, `dispatch_due_reminders` (§8) no tiene ninguna plantilla real para enviar, solo `hello_world` de prueba.
+
+### 7. Configurar el webhook
+
+1. developers.facebook.com → la app → WhatsApp → Configuration → Webhook.
+2. Callback URL: `https://appsintranet.esculapiosis.com/webhooks/whatsapp` — el dominio real confirmado en la §19.
+3. Verify token: un valor propio (no lo genera Meta) que el backend compara en el handshake `GET` descrito en la §7.
+4. Suscribirse al campo `messages` — cubre estados de entrega y mensajes entrantes en un solo webhook, tal como se diseñó en la §7.
+
+> **Orden que importa:** este paso exige que el backend ya esté desplegado (§18) y respondiendo el handshake **antes** de guardar la configuración del webhook — Meta verifica la URL en el momento de guardar, no después. No se puede configurar el webhook antes de tener el servidor arriba.
+
+### 8. Guardar las credenciales
+
+Mismo patrón que `DATABASE_URL` (§18) y la credencial de Firebase (§20): en el `.env` protegido del servidor Windows, nunca en el repositorio.
+
+```
+# .env
+WHATSAPP_PHONE_NUMBER_ID=...
+WHATSAPP_ACCESS_TOKEN=...
+WHATSAPP_APP_SECRET=...          # el que valida X-Hub-Signature-256 (§7)
+WHATSAPP_WEBHOOK_VERIFY_TOKEN=...
+```
+
+### 9. Límite de mensajería y calidad del número
+
+Meta empieza con un límite de cuántas conversaciones se pueden *iniciar* en 24 horas, que sube automáticamente con el volumen, la calidad de las conversaciones y la verificación completa de la empresa del paso 1. WhatsApp Manager muestra un indicador de calidad del número (verde/amarillo/rojo); si cae a rojo, Meta puede pausar el envío. Vale la pena vigilarlo junto con las demás métricas de la §13, no es algo que se configure una sola vez y se olvide.
+
+> **Costos:** la Cloud API cobra por conversación de 24 horas según categoría y país, y Meta ajusta estas tarifas con cierta frecuencia — conviene revisar el valor vigente para Colombia en Business Manager → Facturación en el momento de presupuestar, en vez de asumir una cifra fija aquí que puede quedar desactualizada.
 
 ---
 
