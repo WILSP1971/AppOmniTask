@@ -519,6 +519,7 @@
       <a href="#cicd">§13 CI/CD — Fase 7</a>
       <a href="#detalle-actividad">§14 Detalle y edición de actividad</a>
       <a href="#login-registro">§15 Login y registro</a>
+      <a href="#config-perfil">§16 Configuración y perfil</a>
     </nav>
 
     <main>
@@ -2757,10 +2758,339 @@ class _RegisterScreenState extends ConsumerState&lt;RegisterScreen&gt; {
         </div>
       </section>
 
+      <section id="config-perfil">
+        <div class="sec-head"><span class="sec-num">§16</span><h2>Configuración y perfil de usuario</h2></div>
+        <p>Antes de las pantallas, un cabo suelto: desde la §8 se viene mencionando que los recordatorios se crean "según las preferencias por defecto del usuario", pero nunca se definió dónde viven esas preferencias. Se cierra aquí, porque es exactamente lo que esta pantalla necesita para tener algo real que mostrar y editar.</p>
+
+        <div class="callout alt">
+          <span class="label">Addendum a §3, §6 y §9</span>
+          <code>users</code> gana una columna <code>notification_preferences</code> (JSONB): <code>{"default_channel": "both", "reminder_offsets_minutes": [1440, 60]}</code>. <code>activity_service</code> (§8) la lee al crear los <code>reminders</code> automáticos de una actividad nueva, en vez del valor fijo que había quedado implícito.
+        </div>
+
+        <h3>Backend: lo mínimo para soportarlo</h3>
+        <pre class="code"># models/user.py — addendum a la §9
+notification_preferences: Mapped[dict] = mapped_column(
+    JSONB,
+    server_default='{"default_channel": "both", "reminder_offsets_minutes": [1440, 60]}',
+)</pre>
+        <pre class="code"># schemas/auth.py
+class NotificationPreferences(BaseModel):
+    default_channel: Literal["push", "whatsapp", "both"] = "both"
+    reminder_offsets_minutes: list[int] = [1440, 60]
+
+class UserUpdate(BaseModel):
+    full_name: str | None = None
+    phone_e164: str | None = None
+    timezone: str | None = None
+    notification_preferences: NotificationPreferences | None = None</pre>
+        <pre class="code"># api/v1/auth.py — addendum a la §6
+@router.patch("/auth/me", response_model=UserRead)
+def update_me(
+    payload: UserUpdate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(user, field, value)
+    db.commit()
+    return user</pre>
+        <p>Solo afecta a los <code>reminders</code> que se crean de aquí en adelante — cambiar la preferencia no reescribe los recordatorios de actividades que ya existían. Es una decisión deliberada, no una limitación olvidada: reabrir recordatorios ya calculados para actividades pasadas no tiene un caso de uso claro.</p>
+
+        <h3>Pantalla de ajustes: un menú, no un formulario</h3>
+        <p>Perfil, notificaciones, dispositivos y cerrar sesión son cuatro cosas de naturaleza distinta — mezclarlas en un solo formulario largo sería peor que un menú con cuatro destinos claros.</p>
+        <pre class="code">class SettingsScreen extends ConsumerWidget {
+  const SettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authNotifierProvider).valueOrNull;
+    final user = auth is _Authenticated ? auth.user : null;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Ajustes')),
+      body: ListView(
+        children: [
+          if (user != null)
+            ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+              title: Text(user.fullName),
+              subtitle: Text(user.email),
+              onTap: () =&gt; context.push('/settings/profile'),
+            ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.notifications_outlined),
+            title: const Text('Notificaciones'),
+            subtitle: const Text('Canal y anticipación de los recordatorios'),
+            onTap: () =&gt; context.push('/settings/notifications'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.devices_outlined),
+            title: const Text('Dispositivos'),
+            subtitle: const Text('Sesiones activas de push'),
+            onTap: () =&gt; context.push('/settings/devices'),
+          ),
+          const Divider(),
+          ListTile(
+            leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
+            title: Text(
+              'Cerrar sesión',
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+            onTap: () =&gt; _confirmLogout(context, ref),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future&lt;void&gt; _confirmLogout(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog&lt;bool&gt;(
+      context: context,
+      builder: (_) =&gt; AlertDialog(
+        title: const Text('¿Cerrar sesión?'),
+        actions: [
+          TextButton(onPressed: () =&gt; Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () =&gt; Navigator.pop(context, true), child: const Text('Cerrar sesión')),
+        ],
+      ),
+    );
+    if (confirmed == true) ref.read(authNotifierProvider.notifier).logout();
+  }
+}</pre>
+        <p>Al cerrar sesión no hay navegación manual — el mismo <code>redirect</code> de la §15 detecta que <code>AuthState</code> volvió a <code>unauthenticated</code> y devuelve a <code>/login</code> por su cuenta.</p>
+
+        <h3>Perfil: el correo no se edita aquí</h3>
+        <p>Nombre, celular y zona horaria sí se editan libremente; el correo, deliberadamente, no — es la identidad de login, y cambiarlo debería ser un flujo separado con re-verificación, no una casilla más de un formulario casual (el mismo criterio que en la §14 decidió no exponer un botón de "eliminar" junto a "cancelar").</p>
+        <pre class="code">class ProfileScreen extends ConsumerStatefulWidget {
+  const ProfileScreen({super.key});
+
+  @override
+  ConsumerState&lt;ProfileScreen&gt; createState() =&gt; _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState&lt;ProfileScreen&gt; {
+  final _formKey = GlobalKey&lt;FormState&gt;();
+  late final TextEditingController _nameController;
+  late final TextEditingController _phoneController;
+  late String _timezone;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = (ref.read(authNotifierProvider).valueOrNull as _Authenticated).user;
+    _nameController = TextEditingController(text: user.fullName);
+    _phoneController = TextEditingController(text: user.phoneE164);
+    _timezone = user.timezone;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authNotifierProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Perfil')),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            TextFormField(
+              controller: _nameController,
+              decoration: const InputDecoration(labelText: 'Nombre completo'),
+              validator: (v) =&gt; (v == null || v.trim().isEmpty) ? 'Obligatorio' : null,
+            ),
+            TextFormField(
+              controller: _phoneController,
+              decoration: const InputDecoration(labelText: 'Celular'),
+              validator: (v) =&gt;
+                  (v == null || !v.startsWith('+')) ? 'Incluye el indicativo, ej. +57' : null,
+            ),
+            ListTile(
+              title: const Text('Zona horaria'),
+              subtitle: Text(_timezone),
+              trailing: TextButton(
+                onPressed: _redetectTimezone,
+                child: const Text('Detectar de nuevo'),
+              ),
+              onTap: _pickTimezoneManually,
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: authState.isLoading ? null : _submit,
+              child: const Text('Guardar cambios'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future&lt;void&gt; _redetectTimezone() async {
+    final detected = await FlutterTimezone.getLocalTimezone();
+    setState(() =&gt; _timezone = detected);
+  }
+
+  Future&lt;void&gt; _pickTimezoneManually() async {
+    final selected = await showTimezonePicker(context, initial: _timezone);
+    if (selected != null) setState(() =&gt; _timezone = selected);
+  }
+
+  Future&lt;void&gt; _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    await ref.read(authNotifierProvider.notifier).updateProfile(
+          fullName: _nameController.text.trim(),
+          phoneE164: _phoneController.text.trim(),
+          timezone: _timezone,
+        );
+    if (mounted) context.pop();
+  }
+}</pre>
+        <p>El botón "Detectar de nuevo" cubre el caso normal (alguien viajó y su dispositivo ya está en otra zona horaria); el selector manual queda como respaldo para cuando el dispositivo detecta mal o alguien agenda para una sede en otra ciudad.</p>
+
+        <h3>Preferencias de notificación</h3>
+        <p>El canal y la anticipación son las dos preguntas reales que <code>notification_preferences</code> responde. Un detalle de guarda: el botón de guardar se deshabilita si la persona desmarca todas las opciones de anticipación — de lo contrario, sería fácil terminar sin ningún recordatorio configurado sin darse cuenta.</p>
+        <pre class="code">class NotificationPreferencesScreen extends ConsumerStatefulWidget {
+  const NotificationPreferencesScreen({super.key});
+
+  @override
+  ConsumerState&lt;NotificationPreferencesScreen&gt; createState() =&gt;
+      _NotificationPreferencesScreenState();
+}
+
+class _NotificationPreferencesScreenState
+    extends ConsumerState&lt;NotificationPreferencesScreen&gt; {
+  late String _channel;
+  late Set&lt;int&gt; _offsets;
+
+  static const _offsetOptions = {
+    1440: '1 día antes',
+    60: '1 hora antes',
+    15: '15 minutos antes',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    final user = (ref.read(authNotifierProvider).valueOrNull as _Authenticated).user;
+    _channel = user.notificationPreferences.defaultChannel;
+    _offsets = user.notificationPreferences.reminderOffsetsMinutes.toSet();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Notificaciones')),
+      body: ListView(
+        children: [
+          const _SectionLabel('Canal por defecto'),
+          RadioListTile(
+            value: 'push', groupValue: _channel, title: const Text('Solo push'),
+            onChanged: (v) =&gt; setState(() =&gt; _channel = v!),
+          ),
+          RadioListTile(
+            value: 'whatsapp', groupValue: _channel, title: const Text('Solo WhatsApp'),
+            onChanged: (v) =&gt; setState(() =&gt; _channel = v!),
+          ),
+          RadioListTile(
+            value: 'both', groupValue: _channel, title: const Text('Push y WhatsApp'),
+            onChanged: (v) =&gt; setState(() =&gt; _channel = v!),
+          ),
+          const Divider(),
+          const _SectionLabel('¿Con cuánta anticipación?'),
+          for (final entry in _offsetOptions.entries)
+            CheckboxListTile(
+              value: _offsets.contains(entry.key),
+              title: Text(entry.value),
+              onChanged: (checked) =&gt; setState(() {
+                checked! ? _offsets.add(entry.key) : _offsets.remove(entry.key);
+              }),
+            ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: FilledButton(
+              onPressed: _offsets.isEmpty ? null : _submit,
+              child: const Text('Guardar'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future&lt;void&gt; _submit() async {
+    await ref.read(authNotifierProvider.notifier).updateProfile(
+          preferences: NotificationPreferences(
+            defaultChannel: _channel,
+            reminderOffsetsMinutes: _offsets.toList()..sort(),
+          ),
+        );
+    if (mounted) context.pop();
+  }
+}</pre>
+        <p><code>updateProfile</code> es el mismo método de <code>AuthNotifier</code> que usa la pantalla de perfil — un solo punto de escritura sobre el <code>User</code> guardado en <code>AuthState</code>, para que el nombre en la <code>AppBar</code> o el saludo de la agenda nunca queden desincronizados con lo que la persona acaba de cambiar.</p>
+
+        <h3>Dispositivos: no dejar que alguien se desconecte a sí mismo por error</h3>
+        <p>Reutiliza <code>GET/DELETE /devices</code> de la §8 tal cual. El único detalle no obvio: el dispositivo actual se marca con una etiqueta en vez de mostrar un botón de cerrar sesión — quitarlo de la lista sería fácil de tocar sin querer y dejaría a la persona sin push en el mismo teléfono que está usando.</p>
+        <pre class="code">class DevicesScreen extends ConsumerWidget {
+  const DevicesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final devicesAsync = ref.watch(myDevicesProvider);
+    final currentToken = ref.watch(currentFcmTokenProvider).valueOrNull;
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Dispositivos')),
+      body: devicesAsync.when(
+        data: (devices) =&gt; ListView(
+          children: [
+            for (final device in devices)
+              ListTile(
+                leading: Icon(
+                  device.platform == 'ios' ? Icons.phone_iphone : Icons.phone_android,
+                ),
+                title: Text(device.platform == 'ios' ? 'iPhone' : 'Android'),
+                subtitle: Text(
+                  'Última actividad: '
+                  '${DateFormat('d MMM, HH:mm').format(device.lastSeenAt.toLocal())}',
+                ),
+                trailing: device.fcmToken == currentToken
+                    ? const Chip(label: Text('Este dispositivo'))
+                    : IconButton(
+                        icon: const Icon(Icons.logout),
+                        onPressed: () =&gt; _signOut(ref, device.id),
+                      ),
+              ),
+          ],
+        ),
+        loading: () =&gt; const Center(child: CircularProgressIndicator()),
+        error: (e, _) =&gt; ErrorRetryView(onRetry: () =&gt; ref.invalidate(myDevicesProvider)),
+      ),
+    );
+  }
+
+  Future&lt;void&gt; _signOut(WidgetRef ref, String deviceId) async {
+    await ref.read(deviceRepositoryProvider).delete(deviceId);
+    ref.invalidate(myDevicesProvider);
+  }
+}</pre>
+
+        <h3>Rutas nuevas</h3>
+        <pre class="code">GoRoute(path: '/settings', builder: (context, state) =&gt; const SettingsScreen()),
+GoRoute(path: '/settings/profile', builder: (context, state) =&gt; const ProfileScreen()),
+GoRoute(
+  path: '/settings/notifications',
+  builder: (context, state) =&gt; const NotificationPreferencesScreen(),
+),
+GoRoute(path: '/settings/devices', builder: (context, state) =&gt; const DevicesScreen()),</pre>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §15 añadida: pantallas de login y registro · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §16 añadida: configuración y perfil de usuario (cierra el cabo suelto de las preferencias de notificación) · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>
