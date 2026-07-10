@@ -24,6 +24,7 @@
 11. [Estructura del proyecto FastAPI](#11--estructura-del-proyecto-fastapi)
 12. [Frontend Flutter: Riverpod y vistas de calendario](#12--frontend-flutter-riverpod-y-vistas-de-calendario)
 13. [CI/CD — Fase 7](#13--cicd--fase-7)
+14. [Pantallas de detalle y edición de actividad](#14--pantallas-de-detalle-y-edición-de-actividad)
 
 ---
 
@@ -1368,6 +1369,431 @@ El mismo tag `v*.*.*` dispara tanto el deploy del backend como el build móvil �
 - **Alertas** a Slack/PagerDuty: cola de recordatorios acumulada por más de 5 minutos (síntoma de que un worker está caído), tasa de fallos de WhatsApp por encima de un umbral, o un smoke test de despliegue que falla.
 
 Esto no es exhaustivo — es lo mínimo con lo que una notificación de cita perdida se detecta en minutos y no cuando un paciente llama a preguntar por qué nunca le llegó el recordatorio.
+
+---
+
+## §14 — Pantallas de detalle y edición de actividad
+
+Dos pantallas, no tres: **detalle** (solo lectura, con acciones) y **edición** (un único formulario que sirve para crear, editar y "programar" una actividad sin fecha). Reutilizar el mismo formulario para esos tres casos es intencional — asignar fecha por primera vez y reprogramar son, para el backend de la §6, el mismo `PATCH`.
+
+> **Nota de consistencia con la §12:** la pantalla de backlog navegaba a `/activities/{id}/schedule`. Con el formulario ya definido aquí, esa ruta se colapsa en la misma `/activities/{id}/edit` — una sola pantalla de edición, sin una tercera ruta que hacía exactamente lo mismo con otro nombre.
+
+### Rutas
+
+```dart
+GoRoute(
+  path: '/activities/new',
+  builder: (context, state) => const ActivityEditScreen(),
+),
+GoRoute(
+  path: '/activities/:id',
+  builder: (context, state) =>
+      ActivityDetailScreen(activityId: state.pathParameters['id']!),
+),
+GoRoute(
+  path: '/activities/:id/edit',
+  builder: (context, state) =>
+      ActivityEditScreen(activityId: state.pathParameters['id']),
+),
+```
+
+### Modelo: los recordatorios llegan embebidos en el detalle
+
+`GET /activities/{id}` (§6) trae los `reminders` embebidos — la pantalla de detalle no dispara una segunda llamada para mostrarlos. El modelo `Activity` de la §12 gana un campo más para eso.
+
+```dart
+@freezed
+class ReminderSummary with _$ReminderSummary {
+  const factory ReminderSummary({
+    required String id,
+    required DateTime remindAt,
+    required String channel,
+    required String status,
+  }) = _ReminderSummary;
+
+  factory ReminderSummary.fromJson(Map<String, dynamic> json) =>
+      _$ReminderSummaryFromJson(json);
+}
+
+// Activity (§12) agrega:
+// @Default(<ReminderSummary>[]) List<ReminderSummary> reminders,
+```
+
+### Provider y repositorio: traer una sola actividad
+
+```dart
+Future<Activity> fetchById(String id) async {
+  final response = await _dio.get('/activities/$id');
+  return Activity.fromJson(response.data);
+}
+```
+
+```dart
+@riverpod
+Future<Activity> activityDetail(ActivityDetailRef ref, String activityId) {
+  return ref.watch(activityRepositoryProvider).fetchById(activityId);
+}
+```
+
+### Pantalla de detalle
+
+Si `startsAt` es `null`, no se intenta formatear una fecha que no existe: se muestra el mismo banner de "pendiente por programar" que ya usa el backlog de la §12, con el mismo destino de navegación.
+
+```dart
+class ActivityDetailScreen extends ConsumerWidget {
+  const ActivityDetailScreen({super.key, required this.activityId});
+  final String activityId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activityAsync = ref.watch(activityDetailProvider(activityId));
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Detalle')),
+      body: activityAsync.when(
+        data: (activity) => _DetailBody(activity: activity),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) =>
+            ErrorRetryView(onRetry: () => ref.invalidate(activityDetailProvider(activityId))),
+      ),
+      floatingActionButton: activityAsync.maybeWhen(
+        data: (activity) => FloatingActionButton.extended(
+          icon: const Icon(Icons.edit_outlined),
+          label: Text(activity.startsAt == null ? 'Programar' : 'Editar'),
+          onPressed: () => context.push('/activities/$activityId/edit'),
+        ),
+        orElse: () => null,
+      ),
+    );
+  }
+}
+```
+
+El cuerpo separa lo que es información de lo que dispara una acción — el estado (`status`) se muestra como un chip, no como texto plano, porque es lo primero que alguien necesita leer de un vistazo.
+
+```dart
+class _DetailBody extends StatelessWidget {
+  const _DetailBody({required this.activity});
+  final Activity activity;
+
+  @override
+  Widget build(BuildContext context) {
+    final localFormat = DateFormat('EEEE d MMM · HH:mm', 'es_CO');
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _StatusChip(status: activity.status),
+        Text(activity.title, style: Theme.of(context).textTheme.headlineSmall),
+        if (activity.startsAt != null)
+          Text(localFormat.format(activity.startsAt!.toLocal()))
+        else
+          _UnscheduledBanner(activityId: activity.id),
+        if (activity.location != null) Text(activity.location!),
+        if (activity.contactId != null) _ContactCard(contactId: activity.contactId!),
+        const Divider(),
+        _RemindersList(reminders: activity.reminders),
+        const Divider(),
+        _ActionRow(activity: activity),
+      ],
+    );
+  }
+}
+```
+
+### Acciones: completar y cancelar pasan por el mismo `PATCH`
+
+Cancelar es destructivo para los recordatorios pendientes (se cancelan sin enviarse, según la regla de la §6), así que pide confirmación explícita antes de disparar la llamada.
+
+```dart
+@riverpod
+class ActivityActionsController extends _$ActivityActionsController {
+  @override
+  FutureOr<void> build(String activityId) {}
+
+  Future<void> markCompleted() => _patch({'status': 'completed'});
+  Future<void> cancel() => _patch({'status': 'cancelled'});
+
+  Future<void> _patch(Map<String, dynamic> body) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(activityRepositoryProvider).update(activityId, body);
+      ref.invalidate(activityDetailProvider(activityId));
+      ref.invalidate(activitiesForRangeProvider);
+      ref.invalidate(unscheduledActivitiesProvider);
+    });
+  }
+}
+```
+
+```dart
+class _ActionRow extends ConsumerWidget {
+  const _ActionRow({required this.activity});
+  final Activity activity;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller =
+        ref.watch(activityActionsControllerProvider(activity.id).notifier);
+
+    return Wrap(spacing: 12, children: [
+      if (activity.status != 'completed')
+        FilledButton.tonal(
+          onPressed: controller.markCompleted,
+          child: const Text('Marcar como completada'),
+        ),
+      if (activity.status != 'cancelled')
+        OutlinedButton(
+          onPressed: () => _confirmCancel(context, controller),
+          child: const Text('Cancelar'),
+        ),
+    ]);
+  }
+
+  Future<void> _confirmCancel(
+    BuildContext context,
+    ActivityActionsController controller,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('¿Cancelar esta actividad?'),
+        content: const Text('Los recordatorios pendientes no se enviarán.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Volver'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cancelar actividad'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) controller.cancel();
+  }
+}
+```
+
+Deliberadamente no hay botón de "eliminar": la §6 ya define que el `DELETE` es un soft delete idéntico a cancelar (`status = "cancelled"`), así que exponer los dos como acciones separadas solo confundiría sin agregar capacidad real.
+
+### Formulario único: crear, editar y "programar"
+
+El estado del formulario (controladores de texto, fecha seleccionada) es estado efímero de UI — vive en un `State` normal de Flutter, no en Riverpod. Solo el *envío* (la llamada HTTP y su resultado) pasa por un provider, porque eso sí necesita sobrevivir a rebuilds y comunicar éxito/error al resto de la app.
+
+```dart
+class ActivityEditScreen extends ConsumerStatefulWidget {
+  const ActivityEditScreen({super.key, this.activityId});
+  final String? activityId;
+
+  @override
+  ConsumerState<ActivityEditScreen> createState() => _ActivityEditScreenState();
+}
+
+class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  String _type = 'appointment';
+  String? _contactId;
+  bool _hasDate = true;
+  DateTime? _startsAt;
+  DateTime? _endsAt;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.activityId == null
+        ? null
+        : ref.read(activityDetailProvider(widget.activityId!)).valueOrNull;
+    if (existing != null) {
+      _titleController.text = existing.title;
+      _descriptionController.text = existing.description ?? '';
+      _type = existing.type;
+      _contactId = existing.contactId;
+      _hasDate = existing.startsAt != null;
+      _startsAt = existing.startsAt?.toLocal();
+      _endsAt = existing.endsAt?.toLocal();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEditing = widget.activityId != null;
+
+    return Scaffold(
+      appBar: AppBar(title: Text(isEditing ? 'Editar actividad' : 'Nueva actividad')),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            DropdownButtonFormField<String>(
+              value: _type,
+              items: const [
+                DropdownMenuItem(value: 'meeting', child: Text('Reunión')),
+                DropdownMenuItem(value: 'appointment', child: Text('Cita')),
+                DropdownMenuItem(value: 'task', child: Text('Tarea')),
+                DropdownMenuItem(value: 'activity', child: Text('Actividad')),
+              ],
+              onChanged: (value) => setState(() => _type = value!),
+              decoration: const InputDecoration(labelText: 'Tipo'),
+            ),
+            TextFormField(
+              controller: _titleController,
+              decoration: const InputDecoration(labelText: 'Título'),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'El título es obligatorio' : null,
+            ),
+            TextFormField(
+              controller: _descriptionController,
+              decoration: const InputDecoration(labelText: 'Descripción'),
+              maxLines: 3,
+            ),
+            ContactPickerField(
+              selectedContactId: _contactId,
+              onChanged: (id) => setState(() => _contactId = id),
+            ),
+            SwitchListTile(
+              title: const Text('Sin fecha por ahora'),
+              subtitle: const Text('Se guarda como pendiente por programar'),
+              value: !_hasDate,
+              onChanged: (noDate) => setState(() => _hasDate = !noDate),
+            ),
+            if (_hasDate) ...[
+              _DateTimeField(
+                label: 'Inicio',
+                value: _startsAt,
+                onChanged: (value) => setState(() => _startsAt = value),
+              ),
+              _DateTimeField(
+                label: 'Fin',
+                value: _endsAt,
+                onChanged: (value) => setState(() => _endsAt = value),
+              ),
+            ],
+          ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: FilledButton(
+            onPressed: _submit,
+            child: Text(isEditing ? 'Guardar cambios' : 'Crear'),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_hasDate &&
+        _startsAt != null &&
+        _endsAt != null &&
+        !_endsAt!.isAfter(_startsAt!)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('La hora de fin debe ser posterior al inicio')),
+      );
+      return;
+    }
+
+    final draft = ActivityDraft(
+      type: _type,
+      title: _titleController.text.trim(),
+      description: _descriptionController.text.trim().isEmpty
+          ? null
+          : _descriptionController.text.trim(),
+      contactId: _contactId,
+      startsAt: _hasDate ? _startsAt?.toUtc() : null,
+      endsAt: _hasDate ? _endsAt?.toUtc() : null,
+    );
+
+    final controller = ref.read(activityFormControllerProvider.notifier);
+    final saved = widget.activityId == null
+        ? await controller.create(draft)
+        : await controller.update(widget.activityId!, draft);
+
+    if (saved != null && mounted) context.pop();
+  }
+}
+```
+
+La validación de "fin después de inicio" se repite aquí en el cliente aunque el backend ya la exige (§9, `ends_after_starts`) — a propósito: el cliente da el error al instante, sin esperar el viaje de ida y vuelta a la API para un 422 que ya se podía anticipar.
+
+### Envío: un controller que sabe crear y actualizar
+
+```dart
+@riverpod
+class ActivityFormController extends _$ActivityFormController {
+  @override
+  FutureOr<void> build() {}
+
+  Future<Activity?> create(ActivityDraft draft) =>
+      _submit(() => ref.read(activityRepositoryProvider).create(draft));
+
+  Future<Activity?> update(String id, ActivityDraft draft) =>
+      _submit(() => ref.read(activityRepositoryProvider).update(id, draft));
+
+  Future<Activity?> _submit(Future<Activity> Function() action) async {
+    state = const AsyncLoading();
+    final result = await AsyncValue.guard(action);
+    state = result;
+    if (result.hasValue) {
+      ref.invalidate(activitiesForRangeProvider);
+      ref.invalidate(unscheduledActivitiesProvider);
+    }
+    return result.valueOrNull;
+  }
+}
+```
+
+Invalidar `activitiesForRangeProvider` y `unscheduledActivitiesProvider` juntos, siempre, es intencional: una edición puede mover una actividad de una lista a la otra (asignarle fecha por primera vez la saca del backlog; quitarle la fecha la mete) y no vale la pena tener lógica para decidir cuál invalidar cuando invalidar ambas es barato.
+
+### Selector de fecha/hora
+
+```dart
+class _DateTimeField extends StatelessWidget {
+  const _DateTimeField({required this.label, required this.value, required this.onChanged});
+  final String label;
+  final DateTime? value;
+  final ValueChanged<DateTime> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: Text(label),
+      subtitle: Text(value == null
+          ? 'Seleccionar'
+          : DateFormat('d MMM yyyy · HH:mm').format(value!)),
+      trailing: const Icon(Icons.edit_calendar_outlined),
+      onTap: () async {
+        final date = await showDatePicker(
+          context: context,
+          initialDate: value ?? DateTime.now(),
+          firstDate: DateTime.now().subtract(const Duration(days: 1)),
+          lastDate: DateTime.now().add(const Duration(days: 730)),
+        );
+        if (date == null || !context.mounted) return;
+        final time = await showTimePicker(
+          context: context,
+          initialTime: TimeOfDay.fromDateTime(value ?? DateTime.now()),
+        );
+        if (time == null) return;
+        onChanged(DateTime(date.year, date.month, date.day, time.hour, time.minute));
+      },
+    );
+  }
+}
+```
+
+`value` y el resultado de los pickers se manejan siempre en hora local del dispositivo — la conversión a UTC ocurre en un único lugar, justo antes de armar el `ActivityDraft` en `_submit()`, nunca dentro del propio picker.
+
+### Selector de contacto
+
+`ContactPickerField` es un `Autocomplete<Contact>` con debounce que llama a `GET /contacts?search=` (§6) según se escribe. No trae la lista completa de contactos al abrir el formulario — para una clínica con cientos de pacientes, cargarlos todos de una vez sería tanto lento como innecesario.
 
 ---
 
