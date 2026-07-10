@@ -521,6 +521,7 @@
       <a href="#login-registro">§15 Login y registro</a>
       <a href="#config-perfil">§16 Configuración y perfil</a>
       <a href="#inbox">§17 Notificaciones y bandeja de entrada</a>
+      <a href="#windows-iis">§18 PostgreSQL y conexión en Windows/IIS</a>
     </nav>
 
     <main>
@@ -3320,10 +3321,205 @@ class LocalNotificationsService {
         <p><code>PushMessageListener</code> se marca <code>keepAlive: true</code> a propósito y se lee una sola vez en <code>main.dart</code> (<code>ref.read(pushMessageListenerProvider)</code>) justo después de levantar el <code>ProviderScope</code> — es un servicio de proceso completo, no algo ligado al ciclo de vida de una pantalla en particular. Invalidar <code>unreadNotificationsCountProvider</code> y <code>notificationsInboxProvider</code> en el mismo callback es lo que hace que el badge de la campana y la lista se actualicen solos con la app abierta, sin que la persona tenga que deslizar para refrescar.</p>
       </section>
 
+      <section id="windows-iis">
+        <div class="sec-head"><span class="sec-num">§18</span><h2>PostgreSQL y conexión: mismo servidor Windows con IIS</h2></div>
+        <p>Con el backend y la base de datos en la misma máquina, la conexión es <b>local</b> (127.0.0.1), no remota — eso simplifica bastante: no hay que abrir el puerto 5432 hacia afuera. Lo que sí cambia respecto al §11/§13 es cómo se ejecuta el proceso: IIS no corre Python de forma nativa, así que necesita un puente hacia Uvicorn, y Celery (que no habla HTTP) no puede vivir dentro de IIS en absoluto.</p>
+
+        <h3>Script SQL completo</h3>
+        <p>Es el DDL literal del esquema de la §3, más los addenda de <code>notification_preferences</code> (§16) y <code>summary</code>/<code>acknowledged_at</code> (§17) ya incorporados. Los índices parciales al final no son de relleno: cada uno corresponde a una consulta que el documento ya describe como frecuente.</p>
+        <pre class="code">-- Extensión para generar UUIDs
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- Enums
+CREATE TYPE user_role AS ENUM ('admin', 'professional', 'assistant');
+CREATE TYPE device_platform AS ENUM ('ios', 'android');
+CREATE TYPE activity_type AS ENUM ('meeting', 'appointment', 'task', 'activity');
+CREATE TYPE activity_status AS ENUM ('unscheduled', 'scheduled', 'completed', 'cancelled');
+CREATE TYPE reminder_channel AS ENUM ('push', 'whatsapp', 'both');
+CREATE TYPE reminder_status AS ENUM ('pending', 'processing', 'sent', 'failed');
+CREATE TYPE notification_channel AS ENUM ('push', 'whatsapp');
+CREATE TYPE notification_status AS ENUM ('queued', 'sent', 'delivered', 'read', 'failed');
+CREATE TYPE template_category AS ENUM ('utility', 'marketing', 'authentication');
+CREATE TYPE template_approval_status AS ENUM ('pending', 'approved', 'rejected');
+
+-- users
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    full_name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    phone_e164 TEXT NOT NULL,
+    timezone TEXT NOT NULL,
+    role user_role NOT NULL DEFAULT 'professional',
+    notification_preferences JSONB NOT NULL DEFAULT
+        '{"default_channel": "both", "reminder_offsets_minutes": [1440, 60]}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- devices
+CREATE TABLE devices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    fcm_token TEXT NOT NULL UNIQUE,
+    platform device_platform NOT NULL,
+    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_devices_user_id ON devices (user_id);
+
+-- contacts
+CREATE TABLE contacts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    full_name TEXT NOT NULL,
+    phone_e164 TEXT NOT NULL,
+    notes TEXT
+);
+CREATE INDEX idx_contacts_user_id ON contacts (user_id);
+
+-- whatsapp_templates
+CREATE TABLE whatsapp_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    meta_template_name TEXT NOT NULL,
+    language_code TEXT NOT NULL,
+    category template_category NOT NULL,
+    approval_status template_approval_status NOT NULL DEFAULT 'pending',
+    variables_schema JSONB NOT NULL DEFAULT '{}'
+);
+
+-- activities
+CREATE TABLE activities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    contact_id UUID REFERENCES contacts (id) ON DELETE SET NULL,
+    type activity_type NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    status activity_status NOT NULL DEFAULT 'scheduled',
+    starts_at TIMESTAMPTZ,
+    ends_at TIMESTAMPTZ,
+    timezone TEXT NOT NULL,
+    location TEXT,
+    nudge_frequency_days INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_ends_after_starts
+        CHECK (ends_at IS NULL OR starts_at IS NULL OR ends_at &gt; starts_at)
+);
+CREATE INDEX idx_activities_user_id ON activities (user_id);
+CREATE INDEX idx_activities_contact_id ON activities (contact_id);
+CREATE INDEX idx_activities_starts_at ON activities (starts_at);
+-- La bandeja de "pendientes por programar" (§4/§12) filtra por esto constantemente
+CREATE INDEX idx_activities_unscheduled ON activities (user_id) WHERE starts_at IS NULL;
+
+-- reminders
+CREATE TABLE reminders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    activity_id UUID NOT NULL REFERENCES activities (id) ON DELETE CASCADE,
+    remind_at TIMESTAMPTZ NOT NULL,
+    channel reminder_channel NOT NULL,
+    template_id UUID REFERENCES whatsapp_templates (id),
+    status reminder_status NOT NULL DEFAULT 'pending',
+    sent_at TIMESTAMPTZ
+);
+CREATE INDEX idx_reminders_activity_id ON reminders (activity_id);
+-- El índice que hace barato el SELECT ... FOR UPDATE SKIP LOCKED de la §8
+CREATE INDEX idx_reminders_due ON reminders (remind_at) WHERE status = 'pending';
+
+-- notification_log
+CREATE TABLE notification_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reminder_id UUID REFERENCES reminders (id) ON DELETE SET NULL,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    channel notification_channel NOT NULL,
+    provider_message_id TEXT,
+    status notification_status NOT NULL DEFAULT 'queued',
+    summary TEXT NOT NULL,
+    error_detail TEXT,
+    acknowledged_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_notification_log_user_id ON notification_log (user_id, created_at DESC);
+CREATE INDEX idx_notification_log_provider_message_id ON notification_log (provider_message_id);
+-- Alimenta /notifications/unread-count (§17) sin escanear toda la tabla
+CREATE INDEX idx_notification_log_unread ON notification_log (user_id) WHERE acknowledged_at IS NULL;
+
+-- updated_at al día aunque algo distinto a la API toque la fila directamente
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_activities_updated_at BEFORE UPDATE ON activities
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();</pre>
+        <p>El <code>CHECK</code> de <code>ends_at &gt; starts_at</code> repite, a nivel de base de datos, la misma regla que ya valida el formulario de Flutter (§14) y el schema Pydantic (§9). No es redundancia perdida: son tres capas independientes, y la de la base de datos es la única que también protege contra un acceso directo a SQL que se salte la API por completo.</p>
+
+        <div class="callout alt">
+          <span class="label">Este script es para arrancar, no para mantener</span>
+          Una vez ejecutado, marca el esquema como la base de Alembic con <code>alembic stamp head</code> (usando una migración inicial que refleje este mismo DDL) — así las migraciones futuras del §11/§13 se aplican encima sin que Alembic intente recrear tablas que ya existen.
+        </div>
+
+        <h3>PostgreSQL: rol, base y acceso local</h3>
+        <pre class="code">-- Como superusuario (psql -U postgres)
+CREATE ROLE omnitask_api WITH LOGIN PASSWORD 'una-contraseña-fuerte-aquí';
+CREATE DATABASE omnitask OWNER omnitask_api;</pre>
+        <p>En <code>postgresql.conf</code>, <code>listen_addresses = 'localhost'</code> basta — no hace falta <code>'*'</code>, porque nada fuera de esta misma máquina necesita hablarle a Postgres directamente. En <code>pg_hba.conf</code>, una sola línea cubre el caso real:</p>
+        <pre class="code"># pg_hba.conf
+host    omnitask    omnitask_api    127.0.0.1/32    scram-sha-256</pre>
+        <p>Tras tocar cualquiera de los dos archivos, reiniciar el servicio (<code>services.msc</code> → PostgreSQL, o <code>net stop postgresql-x64-16</code> seguido de <code>net start postgresql-x64-16</code>). Luego, cargar el script:</p>
+        <pre class="code">psql -U omnitask_api -d omnitask -f schema.sql</pre>
+
+        <h3>Cadena de conexión de FastAPI</h3>
+        <p>Como es tráfico de loopback que nunca sale de la máquina, <code>sslmode</code> no es necesario aquí — sí lo sería el día que la base de datos se mueva a otro servidor.</p>
+        <pre class="code"># .env — fuera del webroot, permisos NTFS restringidos a la identidad del app pool
+DATABASE_URL=postgresql+psycopg://omnitask_api:una-contraseña-fuerte-aquí@127.0.0.1:5432/omnitask</pre>
+        <p>Evitar poner esta cadena directo en <code>web.config</code> en texto plano — la §5 ya pedía un gestor de secretos, y un <code>.env</code> con permisos NTFS restringidos (solo lectura para la identidad del Application Pool, sin acceso para <code>IIS_IUSRS</code> en general) cumple ese mismo propósito sin depender de herramientas específicas de .NET como <code>aspnet_regiis</code>.</p>
+
+        <h3>IIS como puente hacia Uvicorn (httpPlatformHandler)</h3>
+        <p>IIS no ejecuta Python de forma nativa. El módulo <b>httpPlatformHandler</b> (descarga aparte de Microsoft, no viene instalado por defecto) es el mecanismo estándar de IIS para este caso: arranca, monitorea y reinicia el proceso Python él mismo — el mismo enfoque que se usa para hospedar apps de Node.js bajo IIS. No hace falta Application Request Routing (ARR) para esto; ARR entraría en juego solo si más adelante se necesita balancear varias instancias.</p>
+        <pre class="code">&lt;!-- web.config, en la raíz del sitio de IIS --&gt;
+&lt;configuration&gt;
+  &lt;system.webServer&gt;
+    &lt;handlers&gt;
+      &lt;add name="PythonHandler" path="*" verb="*"
+           modules="httpPlatformHandler" resourceType="Unspecified" /&gt;
+    &lt;/handlers&gt;
+    &lt;httpPlatform processPath="C:\omnitask\venv\Scripts\python.exe"
+                   arguments="-m uvicorn app.main:app --host 127.0.0.1 --port %HTTP_PLATFORM_PORT%"
+                   startupTimeLimit="60"
+                   stdoutLogEnabled="true"
+                   stdoutLogFile="C:\omnitask\logs\stdout.log"&gt;
+    &lt;/httpPlatform&gt;
+  &lt;/system.webServer&gt;
+&lt;/configuration&gt;</pre>
+        <p><code>%HTTP_PLATFORM_PORT%</code> lo asigna IIS dinámicamente por cada arranque del Application Pool — Uvicorn escucha ahí, nunca en un puerto fijo elegido a mano. El sitio de IIS se enlaza a 443 con el certificado del servidor; IIS termina TLS y reenvía en HTTP plano hacia Uvicorn, que solo escucha en <code>127.0.0.1</code> y por lo tanto no es alcanzable desde fuera de la máquina ni siquiera si alguien lo intentara.</p>
+        <p>El Application Pool del sitio debe crearse en modo <b>"No Managed Code"</b> — no es una app .NET, y decirle a IIS que gestione un runtime .NET que no se usa solo agrega una capa sin propósito.</p>
+
+        <h3>Celery worker y beat: no viven en IIS</h3>
+        <p>IIS únicamente sabe hablar HTTP. Los procesos de Celery (§8) no exponen un puerto HTTP — son demonios de fondo, así que <code>web.config</code> no aplica en absoluto. Se instalan como <b>servicios de Windows</b> con <b>NSSM</b> (Non-Sucking Service Manager), independientes del sitio de IIS y de su ciclo de vida.</p>
+        <pre class="code">nssm install OmniTaskWorker "C:\omnitask\venv\Scripts\python.exe" ^
+  "-m celery -A app.tasks.celery_app worker --loglevel=info --pool=solo"
+
+nssm install OmniTaskBeat "C:\omnitask\venv\Scripts\python.exe" ^
+  "-m celery -A app.tasks.celery_app beat --loglevel=info"</pre>
+        <p><code>--pool=solo</code> no es opcional en Windows: el pool <i>prefork</i> por defecto de Celery depende de <code>os.fork()</code>, que no existe en este sistema operativo. <code>solo</code> procesa una tarea a la vez por worker — para el volumen de recordatorios de una clínica, correcto y suficiente; si el volumen creciera, la alternativa sería correr varias instancias de <code>OmniTaskWorker</code> en vez de cambiar de pool.</p>
+
+        <h3>Redis: en Windows, mejor Memurai que Redis "oficial"</h3>
+        <p>Redis dejó de mantener builds oficiales para Windows hace años. En vez de depender de un puerto no soportado, <b>Memurai</b> es compatible con el protocolo Redis, se mantiene activamente para Windows y tiene una edición de desarrollo gratuita — se instala como servicio de Windows igual que PostgreSQL, escuchando también en <code>127.0.0.1:6379</code>. Si el servidor ya tiene Docker Desktop/WSL2 disponible por otra razón, correr la imagen <code>redis:7</code> ahí es una alternativa igual de válida.</p>
+
+        <h3>Addendum al §13: el pipeline de CI/CD asumía Linux</h3>
+        <p>Los pasos <code>ssh deploy@staging "docker ..."</code> del §13 no aplican tal cual a este servidor. El reemplazo más directo es instalar un <b>GitHub Actions self-hosted runner</b> en esta misma máquina Windows: el job de despliegue corre localmente con PowerShell (copiar los archivos nuevos, reiniciar el Application Pool de IIS y los servicios <code>OmniTaskWorker</code>/<code>OmniTaskBeat</code> con NSSM) en vez de empujar una imagen Docker a un host remoto. Es un ajuste de mecanismo, no de principio — el gate manual de <code>environment: production</code> y la idea de nunca reconstruir para producción siguen aplicando igual.</p>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §17 añadida: notificaciones y bandeja de entrada · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §18 añadida: scripts SQL y conexión para PostgreSQL + FastAPI en el mismo servidor Windows/IIS · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>
