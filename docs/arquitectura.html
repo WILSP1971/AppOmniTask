@@ -520,6 +520,7 @@
       <a href="#detalle-actividad">§14 Detalle y edición de actividad</a>
       <a href="#login-registro">§15 Login y registro</a>
       <a href="#config-perfil">§16 Configuración y perfil</a>
+      <a href="#inbox">§17 Notificaciones y bandeja de entrada</a>
     </nav>
 
     <main>
@@ -3087,10 +3088,242 @@ GoRoute(
 GoRoute(path: '/settings/devices', builder: (context, state) =&gt; const DevicesScreen()),</pre>
       </section>
 
+      <section id="inbox">
+        <div class="sec-head"><span class="sec-num">§17</span><h2>Notificaciones y bandeja de entrada</h2></div>
+
+        <div class="callout alt">
+          <span class="label">No confundir con la §12</span>
+          Esta es una <b>segunda bandeja</b>, distinta a la de "pendientes por programar". Aquella es un backlog de actividades sin fecha; esta es un historial de lo que ya se envió — confirmaciones, recordatorios, WhatsApp — con su estado de entrega.
+        </div>
+
+        <p><code>notification_log</code> (§3) ya registra cada envío, pero le faltan dos cosas para servir como bandeja de entrada real: el texto que se mandó (para no depender de una actividad que puede haber cambiado o desaparecido) y si la persona ya lo vio <i>dentro de la app</i> — algo distinto de si Meta reporta el WhatsApp como "leído".</p>
+
+        <div class="callout">
+          <span class="label">Addendum a §3 y §6</span>
+          <code>notification_log</code> gana <code>summary</code> (texto tal como se envió, capturado en el momento) y <code>acknowledged_at</code> (cuándo la persona lo abrió en la app). <code>status</code> sigue siendo el estado de entrega del proveedor (sent/delivered/read/failed) — son dos señales distintas para dos audiencias distintas: el contacto que recibe el WhatsApp, y la persona que revisa su bandeja en la app.
+        </div>
+
+        <h3>Backend: endpoints de <code>/notifications</code></h3>
+        <pre class="code"># models/notification_log.py — addendum a la §3
+summary: Mapped[str]
+acknowledged_at: Mapped[datetime | None]</pre>
+        <pre class="code"># api/v1/notifications.py
+@router.get("/notifications", response_model=Page[NotificationRead])
+def list_notifications(
+    unread_only: bool = False,
+    page: int = 1,
+    limit: int = 20,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    query = select(NotificationLog).where(NotificationLog.user_id == user.id)
+    if unread_only:
+        query = query.where(NotificationLog.acknowledged_at.is_(None))
+    query = query.order_by(NotificationLog.created_at.desc())
+    return paginate(db, query, page=page, limit=limit)
+
+
+@router.get("/notifications/unread-count")
+def unread_count(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    count = db.scalar(
+        select(func.count())
+        .select_from(NotificationLog)
+        .where(NotificationLog.user_id == user.id, NotificationLog.acknowledged_at.is_(None))
+    )
+    return {"count": count}
+
+
+@router.patch("/notifications/{id}/ack")
+def acknowledge(id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    notification = db.get(NotificationLog, id)
+    if notification is None or notification.user_id != user.id:
+        raise HTTPException(404)
+    notification.acknowledged_at = func.now()
+    db.commit()
+
+
+@router.post("/notifications/ack-all")
+def acknowledge_all(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.execute(
+        update(NotificationLog)
+        .where(NotificationLog.user_id == user.id, NotificationLog.acknowledged_at.is_(None))
+        .values(acknowledged_at=func.now())
+    )
+    db.commit()</pre>
+        <p><code>/notifications/unread-count</code> es deliberadamente su propio endpoint, separado del listado completo: es lo que alimenta el badge de la campana en la <code>AppBar</code> del calendario, y no tiene sentido traer la lista entera solo para contar cuántos faltan por leer.</p>
+
+        <h3>Modelo y repositorio en Flutter</h3>
+        <pre class="code">@freezed
+class NotificationItem with _$NotificationItem {
+  const factory NotificationItem({
+    required String id,
+    required String channel,
+    required String status,
+    required String summary,
+    String? activityId,
+    required DateTime createdAt,
+    DateTime? acknowledgedAt,
+  }) = _NotificationItem;
+
+  factory NotificationItem.fromJson(Map&lt;String, dynamic&gt; json) =&gt;
+      _$NotificationItemFromJson(json);
+}</pre>
+        <pre class="code">class NotificationRepository {
+  NotificationRepository(this._dio);
+  final Dio _dio;
+
+  Future&lt;List&lt;NotificationItem&gt;&gt; fetchAll({bool unreadOnly = false, int page = 1}) async {
+    final response = await _dio.get('/notifications', queryParameters: {
+      'unread_only': unreadOnly,
+      'page': page,
+    });
+    return (response.data['items'] as List)
+        .map((j) =&gt; NotificationItem.fromJson(j))
+        .toList();
+  }
+
+  Future&lt;int&gt; fetchUnreadCount() async {
+    final response = await _dio.get('/notifications/unread-count');
+    return response.data['count'] as int;
+  }
+
+  Future&lt;void&gt; acknowledge(String id) =&gt; _dio.patch('/notifications/$id/ack');
+  Future&lt;void&gt; acknowledgeAll() =&gt; _dio.post('/notifications/ack-all');
+}
+
+@riverpod
+Future&lt;int&gt; unreadNotificationsCount(UnreadNotificationsCountRef ref) {
+  return ref.watch(notificationRepositoryProvider).fetchUnreadCount();
+}
+
+@riverpod
+Future&lt;List&lt;NotificationItem&gt;&gt; notificationsInbox(NotificationsInboxRef ref) {
+  return ref.watch(notificationRepositoryProvider).fetchAll();
+}</pre>
+
+        <h3>La campana en el calendario (addendum a la §12)</h3>
+        <pre class="code">IconButton(
+  icon: Badge(
+    label: Text('${ref.watch(unreadNotificationsCountProvider).valueOrNull ?? 0}'),
+    isLabelVisible: (ref.watch(unreadNotificationsCountProvider).valueOrNull ?? 0) &gt; 0,
+    child: const Icon(Icons.notifications_outlined),
+  ),
+  onPressed: () =&gt; context.push('/notifications'),
+),</pre>
+
+        <h3>Pantalla de bandeja de entrada</h3>
+        <p>Tocar un ítem hace dos cosas, no una: lo marca como reconocido (si estaba sin leer) y, si trae <code>activityId</code>, navega al detalle — el mismo destino al que ya llega el deep link de un push (§12), así que abrir la notificación desde la campana o desde el sistema operativo termina en el mismo lugar.</p>
+        <pre class="code">class NotificationsInboxScreen extends ConsumerWidget {
+  const NotificationsInboxScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notificationsAsync = ref.watch(notificationsInboxProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Notificaciones'),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await ref.read(notificationRepositoryProvider).acknowledgeAll();
+              ref.invalidate(notificationsInboxProvider);
+              ref.invalidate(unreadNotificationsCountProvider);
+            },
+            child: const Text('Marcar todas'),
+          ),
+        ],
+      ),
+      body: notificationsAsync.when(
+        data: (items) =&gt; items.isEmpty
+            ? const _EmptyInbox()
+            : ListView.separated(
+                itemCount: items.length,
+                separatorBuilder: (_, __) =&gt; const Divider(height: 1),
+                itemBuilder: (context, i) =&gt; _NotificationTile(item: items[i]),
+              ),
+        loading: () =&gt; const Center(child: CircularProgressIndicator()),
+        error: (e, _) =&gt; ErrorRetryView(onRetry: () =&gt; ref.invalidate(notificationsInboxProvider)),
+      ),
+    );
+  }
+}
+
+class _NotificationTile extends ConsumerWidget {
+  const _NotificationTile({required this.item});
+  final NotificationItem item;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isUnread = item.acknowledgedAt == null;
+
+    return ListTile(
+      tileColor: isUnread
+          ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
+          : null,
+      leading: Icon(
+        item.channel == 'whatsapp' ? Icons.chat_outlined : Icons.notifications_outlined,
+      ),
+      title: Text(
+        item.summary,
+        style: TextStyle(fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal),
+      ),
+      subtitle: Text(_relativeTime(item.createdAt)),
+      trailing: _StatusDot(status: item.status),
+      onTap: () async {
+        if (isUnread) {
+          await ref.read(notificationRepositoryProvider).acknowledge(item.id);
+          ref.invalidate(notificationsInboxProvider);
+          ref.invalidate(unreadNotificationsCountProvider);
+        }
+        if (item.activityId != null &amp;&amp; context.mounted) {
+          context.push('/activities/${item.activityId}');
+        }
+      },
+    );
+  }
+}</pre>
+        <p><code>_StatusDot</code> pinta el <code>status</code> de entrega — pero en la práctica solo es informativo para el canal WhatsApp: FCM no le reporta al backend cuándo un push se entregó o se leyó, así que en push casi siempre se queda en <code>sent</code>. Vale la pena que el color no prometa una precisión que el canal no tiene.</p>
+
+        <h3>Por qué hace falta un listener aparte para el primer plano</h3>
+        <p>FCM no muestra una notificación de sistema mientras la app está abierta en primer plano — en ninguna de las dos plataformas. Sin este puente, alguien con la app abierta simplemente no vería el recordatorio llegar.</p>
+        <pre class="code">@Riverpod(keepAlive: true)
+class PushMessageListener extends _$PushMessageListener {
+  @override
+  void build() {
+    FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+  }
+
+  void _handleForegroundMessage(RemoteMessage message) {
+    ref.read(localNotificationsServiceProvider).show(message);
+    ref.invalidate(unreadNotificationsCountProvider);
+    ref.invalidate(notificationsInboxProvider);
+  }
+}
+
+class LocalNotificationsService {
+  LocalNotificationsService(this._plugin);
+  final FlutterLocalNotificationsPlugin _plugin;
+
+  Future&lt;void&gt; show(RemoteMessage message) {
+    return _plugin.show(
+      message.hashCode,
+      message.notification?.title ?? 'OmniTask',
+      message.notification?.body ?? '',
+      const NotificationDetails(
+        android: AndroidNotificationDetails('reminders', 'Recordatorios'),
+      ),
+      payload: message.data['activity_id'],
+    );
+  }
+}</pre>
+        <p><code>PushMessageListener</code> se marca <code>keepAlive: true</code> a propósito y se lee una sola vez en <code>main.dart</code> (<code>ref.read(pushMessageListenerProvider)</code>) justo después de levantar el <code>ProviderScope</code> — es un servicio de proceso completo, no algo ligado al ciclo de vida de una pantalla en particular. Invalidar <code>unreadNotificationsCountProvider</code> y <code>notificationsInboxProvider</code> en el mismo callback es lo que hace que el badge de la campana y la lista se actualicen solos con la app abierta, sin que la persona tenga que deslizar para refrescar.</p>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §16 añadida: configuración y perfil de usuario (cierra el cabo suelto de las preferencias de notificación) · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §17 añadida: notificaciones y bandeja de entrada · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>
