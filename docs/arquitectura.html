@@ -523,6 +523,7 @@
       <a href="#inbox">§17 Notificaciones y bandeja de entrada</a>
       <a href="#windows-iis">§18 PostgreSQL y conexión en Windows/IIS</a>
       <a href="#api-base-url">§19 La app y la API en producción</a>
+      <a href="#firebase-setup">§20 Crear el proyecto de Firebase</a>
     </nav>
 
     <main>
@@ -3568,10 +3569,77 @@ flutter run --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api
         </div>
       </section>
 
+      <section id="firebase-setup">
+        <div class="sec-head"><span class="sec-num">§20</span><h2>Crear el proyecto de Firebase</h2></div>
+        <p>Tarea de la <b>Fase 0</b> (§4) — se puede hacer en paralelo con la verificación de WhatsApp en Meta, no depende de nada más del proyecto. El resultado son tres archivos: dos para el cliente Flutter (Android e iOS) y una credencial de servicio para el backend.</p>
+
+        <h3>1. Crear el proyecto</h3>
+        <ol>
+          <li>Entrar a <b>console.firebase.google.com</b> con la cuenta de Google de la clínica (no una cuenta personal — quien administre el proyecto después debe poder acceder).</li>
+          <li>"Agregar proyecto" → nombre, por ejemplo <code>omnitask-clinicacampbell</code>.</li>
+          <li>Google Analytics es opcional aquí — no hace falta para Cloud Messaging, se puede omitir sin perder nada de lo que este documento describe.</li>
+        </ol>
+
+        <h3>2. Registrar la app Android</h3>
+        <ol>
+          <li>Dentro del proyecto: "Agregar app" → Android.</li>
+          <li>El <b>nombre del paquete</b> tiene que coincidir exactamente con el <code>applicationId</code> de <code>android/app/build.gradle</code> (ej. <code>com.clinicacampbell.omnitask</code>) — si no coinciden, el token FCM nunca llega.</li>
+          <li>Descargar <code>google-services.json</code> y colocarlo en <code>android/app/google-services.json</code>.</li>
+          <li>Agregar el plugin de Google Services al build de Gradle:</li>
+        </ol>
+        <pre class="code">// android/build.gradle
+dependencies {
+    classpath 'com.google.gms:google-services:4.4.2'
+}
+
+// android/app/build.gradle
+apply plugin: 'com.google.gms.google-services'</pre>
+
+        <h3>3. Registrar la app iOS</h3>
+        <ol>
+          <li>"Agregar app" → iOS. El <b>Bundle ID</b> debe coincidir con el configurado en Xcode (<code>ios/Runner.xcodeproj</code>).</li>
+          <li>Descargar <code>GoogleService-Info.plist</code> y agregarlo <b>desde Xcode</b> (arrastrarlo al grupo <code>Runner</code> del navegador de proyecto) — copiarlo solo al sistema de archivos no basta, Xcode necesita referenciarlo explícitamente en el <code>.xcodeproj</code>.</li>
+          <li>En Xcode, habilitar la capability <b>Push Notifications</b> para el target <code>Runner</code>.</li>
+          <li>En Apple Developer, generar una <b>APNs Authentication Key</b> (<code>.p8</code>) y subirla en Firebase Console → Configuración del proyecto → Cloud Messaging → APNs Authentication Key.</li>
+        </ol>
+        <div class="callout alt">
+          <span class="label">Por qué hace falta la key de Apple</span>
+          En iOS, FCM no entrega directo al teléfono — internamente reenvía a través de APNs, el servicio de notificaciones de Apple. Sin esa key, Firebase puede aceptar el mensaje del backend pero nunca lo entrega a un iPhone.
+        </div>
+
+        <h3>4. Credencial de servicio para el backend</h3>
+        <ol>
+          <li>Firebase Console → Configuración del proyecto → <b>Cuentas de servicio</b> → "Generar nueva clave privada" → descarga un archivo JSON.</li>
+          <li>Ese JSON es lo que inicializa el Firebase Admin SDK del lado del servidor — la pieza que <code>_send_push</code> (§8) usa para mandar el mensaje.</li>
+        </ol>
+        <pre class="code"># backend — inicialización una sola vez, al arrancar la app
+import firebase_admin
+from firebase_admin import credentials
+
+cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
+firebase_admin.initialize_app(cred)</pre>
+        <div class="callout">
+          <span class="label">Esto sí es un secreto</span>
+          El JSON de la cuenta de servicio da acceso completo para enviar mensajes en nombre del proyecto — nunca al repositorio. En el servidor Windows (§18), va junto al <code>.env</code> con permisos NTFS restringidos a la identidad del Application Pool, igual que <code>DATABASE_URL</code>. <code>google-services.json</code> y <code>GoogleService-Info.plist</code> son distintos: identifican la app, no son credenciales de acceso, así que son de menor riesgo — pero igual es buena práctica no publicarlos en un repositorio público.
+        </div>
+
+        <h3>5. Inicializar Firebase en Flutter</h3>
+        <pre class="code">// main.dart
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(const ProviderScope(child: OmniTaskApp()));
+}</pre>
+        <p>Requiere el paquete <code>firebase_core</code> además de <code>firebase_messaging</code> (ya listado en la §12). Sin esta línea, cualquier llamada a <code>FirebaseMessaging.instance</code> — el registro de token de la §8 o el listener de primer plano de la §17 — falla al arrancar.</p>
+
+        <h3>6. Verificar antes de conectar todo el pipeline</h3>
+        <p>Antes de depender de Celery y del backend completo (§8), conviene confirmar que la entrega funciona de forma aislada: Firebase Console → Cloud Messaging → "Enviar mensaje de prueba", pegando el token FCM que imprime la app en un dispositivo real (los emuladores/simuladores no siempre reciben push de forma confiable). Si ese mensaje de prueba llega, el problema de cualquier fallo posterior está en el backend o en la lógica de recordatorios — no en la configuración de Firebase.</p>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §19 añadida: la app y la API en producción (https://appsintranet.esculapiosis.com/) · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §20 añadida: pasos para crear el proyecto de Firebase (Fase 0) · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>

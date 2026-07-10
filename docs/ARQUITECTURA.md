@@ -30,6 +30,7 @@
 17. [Notificaciones y bandeja de entrada](#17--notificaciones-y-bandeja-de-entrada)
 18. [PostgreSQL y conexión: mismo servidor Windows con IIS](#18--postgresql-y-conexión-mismo-servidor-windows-con-iis)
 19. [La app y la API en producción](#19--la-app-y-la-api-en-producción)
+20. [Crear el proyecto de Firebase](#20--crear-el-proyecto-de-firebase)
 
 ---
 
@@ -3152,4 +3153,75 @@ Al vivir en `src/debug/` (no en `src/main/`), Flutter lo aplica solo a los build
 
 ---
 
-*Documento de arquitectura v1 · 10 de julio de 2026 · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.*
+## §20 — Crear el proyecto de Firebase
+
+Tarea de la **Fase 0** (§4) — se puede hacer en paralelo con la verificación de WhatsApp en Meta, no depende de nada más del proyecto. El resultado son tres archivos: dos para el cliente Flutter (Android e iOS) y una credencial de servicio para el backend.
+
+### 1. Crear el proyecto
+
+1. Entrar a **console.firebase.google.com** con la cuenta de Google de la clínica (no una cuenta personal — quien administre el proyecto después debe poder acceder).
+2. "Agregar proyecto" → nombre, por ejemplo `omnitask-clinicacampbell`.
+3. Google Analytics es opcional aquí — no hace falta para Cloud Messaging, se puede omitir sin perder nada de lo que este documento describe.
+
+### 2. Registrar la app Android
+
+1. Dentro del proyecto: "Agregar app" → Android.
+2. El **nombre del paquete** tiene que coincidir exactamente con el `applicationId` de `android/app/build.gradle` (ej. `com.clinicacampbell.omnitask`) — si no coinciden, el token FCM nunca llega.
+3. Descargar `google-services.json` y colocarlo en `android/app/google-services.json`.
+4. Agregar el plugin de Google Services al build de Gradle:
+
+```groovy
+// android/build.gradle
+dependencies {
+    classpath 'com.google.gms:google-services:4.4.2'
+}
+
+// android/app/build.gradle
+apply plugin: 'com.google.gms.google-services'
+```
+
+### 3. Registrar la app iOS
+
+1. "Agregar app" → iOS. El **Bundle ID** debe coincidir con el configurado en Xcode (`ios/Runner.xcodeproj`).
+2. Descargar `GoogleService-Info.plist` y agregarlo **desde Xcode** (arrastrarlo al grupo `Runner` del navegador de proyecto) — copiarlo solo al sistema de archivos no basta, Xcode necesita referenciarlo explícitamente en el `.xcodeproj`.
+3. En Xcode, habilitar la capability **Push Notifications** para el target `Runner`.
+4. En Apple Developer, generar una **APNs Authentication Key** (`.p8`) y subirla en Firebase Console → Configuración del proyecto → Cloud Messaging → APNs Authentication Key.
+
+> **Por qué hace falta la key de Apple:** en iOS, FCM no entrega directo al teléfono — internamente reenvía a través de APNs, el servicio de notificaciones de Apple. Sin esa key, Firebase puede aceptar el mensaje del backend pero nunca lo entrega a un iPhone.
+
+### 4. Credencial de servicio para el backend
+
+1. Firebase Console → Configuración del proyecto → **Cuentas de servicio** → "Generar nueva clave privada" → descarga un archivo JSON.
+2. Ese JSON es lo que inicializa el Firebase Admin SDK del lado del servidor — la pieza que `_send_push` (§8) usa para mandar el mensaje.
+
+```python
+# backend — inicialización una sola vez, al arrancar la app
+import firebase_admin
+from firebase_admin import credentials
+
+cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
+firebase_admin.initialize_app(cred)
+```
+
+> **Esto sí es un secreto:** el JSON de la cuenta de servicio da acceso completo para enviar mensajes en nombre del proyecto — nunca al repositorio. En el servidor Windows (§18), va junto al `.env` con permisos NTFS restringidos a la identidad del Application Pool, igual que `DATABASE_URL`. `google-services.json` y `GoogleService-Info.plist` son distintos: identifican la app, no son credenciales de acceso, así que son de menor riesgo — pero igual es buena práctica no publicarlos en un repositorio público.
+
+### 5. Inicializar Firebase en Flutter
+
+```dart
+// main.dart
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
+  runApp(const ProviderScope(child: OmniTaskApp()));
+}
+```
+
+Requiere el paquete `firebase_core` además de `firebase_messaging` (ya listado en la §12). Sin esta línea, cualquier llamada a `FirebaseMessaging.instance` — el registro de token de la §8 o el listener de primer plano de la §17 — falla al arrancar.
+
+### 6. Verificar antes de conectar todo el pipeline
+
+Antes de depender de Celery y del backend completo (§8), conviene confirmar que la entrega funciona de forma aislada: Firebase Console → Cloud Messaging → "Enviar mensaje de prueba", pegando el token FCM que imprime la app en un dispositivo real (los emuladores/simuladores no siempre reciben push de forma confiable). Si ese mensaje de prueba llega, el problema de cualquier fallo posterior está en el backend o en la lógica de recordatorios — no en la configuración de Firebase.
+
+---
+
+*Documento de arquitectura v1 · 11 de julio de 2026 · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.*
