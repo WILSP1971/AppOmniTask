@@ -518,6 +518,7 @@
       <a href="#flutter">§12 Frontend Flutter</a>
       <a href="#cicd">§13 CI/CD — Fase 7</a>
       <a href="#detalle-actividad">§14 Detalle y edición de actividad</a>
+      <a href="#login-registro">§15 Login y registro</a>
     </nav>
 
     <main>
@@ -2336,10 +2337,430 @@ class ActivityFormController extends _$ActivityFormController {
         <p><code>ContactPickerField</code> es un <code>Autocomplete&lt;Contact&gt;</code> con debounce que llama a <code>GET /contacts?search=</code> (§6) según se escribe. No trae la lista completa de contactos al abrir el formulario — para una clínica con cientos de pacientes, cargarlos todos de una vez sería tanto lento como innecesario.</p>
       </section>
 
+      <section id="login-registro">
+        <div class="sec-head"><span class="sec-num">§15</span><h2>Pantallas de login y registro</h2></div>
+        <p>La pieza que ata todo esto: ninguna de las dos pantallas navega manualmente al entrar — el <code>redirect</code> de <code>go_router</code> reacciona al estado de <code>authNotifierProvider</code> y mueve a la persona a donde corresponde. Login y registro solo cambian ese estado; no deciden a dónde ir después.</p>
+
+        <h3>Modelos: User y AuthState</h3>
+        <p><code>timezone</code> viaja en el modelo de usuario desde el registro — es el mismo valor que la §9 exige como identificador IANA válido, y aquí nunca lo escribe la persona a mano (más abajo).</p>
+        <pre class="code">@freezed
+class User with _$User {
+  const factory User({
+    required String id,
+    required String fullName,
+    required String email,
+    required String timezone,
+  }) = _User;
+
+  factory User.fromJson(Map&lt;String, dynamic&gt; json) =&gt; _$UserFromJson(json);
+}
+
+@freezed
+sealed class AuthState with _$AuthState {
+  const factory AuthState.unknown() = _Unknown;
+  const factory AuthState.unauthenticated() = _Unauthenticated;
+  const factory AuthState.authenticated(User user) = _Authenticated;
+}</pre>
+
+        <h3>Repositorio: los cinco endpoints de <code>/auth</code> de la §6</h3>
+        <pre class="code">class AuthRepository {
+  AuthRepository(this._dio);
+  final Dio _dio;
+
+  Future&lt;(User, String, String)&gt; register({
+    required String fullName,
+    required String email,
+    required String password,
+    required String phoneE164,
+    required String timezone,
+  }) async {
+    final response = await _dio.post('/auth/register', data: {
+      'full_name': fullName,
+      'email': email,
+      'password': password,
+      'phone_e164': phoneE164,
+      'timezone': timezone,
+    });
+    return (
+      User.fromJson(response.data['user']),
+      response.data['access_token'] as String,
+      response.data['refresh_token'] as String,
+    );
+  }
+
+  Future&lt;(String, String)&gt; login(String email, String password) async {
+    final response = await _dio.post('/auth/login', data: {
+      'email': email,
+      'password': password,
+    });
+    return (response.data['access_token'] as String, response.data['refresh_token'] as String);
+  }
+
+  Future&lt;User&gt; fetchMe() async {
+    final response = await _dio.get('/auth/me');
+    return User.fromJson(response.data);
+  }
+
+  Future&lt;(String, String)&gt; refresh(String refreshToken) async {
+    final response = await _dio.post('/auth/refresh', data: {'refresh_token': refreshToken});
+    return (response.data['access_token'] as String, response.data['refresh_token'] as String);
+  }
+
+  Future&lt;void&gt; logout(String refreshToken) {
+    return _dio.post('/auth/logout', data: {'refresh_token': refreshToken});
+  }
+}</pre>
+
+        <h3>AuthNotifier: la única puerta hacia el estado de sesión</h3>
+        <p>Al arrancar la app, <code>build()</code> intenta restaurar la sesión con el refresh token guardado — el mismo <code>refreshSession()</code> que ya usa el interceptor de Dio de la §12 cuando un 401 lo dispara a mitad de una petición cualquiera. Es la misma función, dos disparadores distintos.</p>
+        <pre class="code">@riverpod
+class AuthNotifier extends _$AuthNotifier {
+  @override
+  Future&lt;AuthState&gt; build() async {
+    final refreshToken = await ref.watch(secureTokenStorageProvider).readRefreshToken();
+    if (refreshToken == null) return const AuthState.unauthenticated();
+    return _restoreSession();
+  }
+
+  Future&lt;AuthState&gt; _restoreSession() async {
+    final refreshed = await refreshSession();
+    if (!refreshed) return const AuthState.unauthenticated();
+
+    final user = await ref.read(authRepositoryProvider).fetchMe();
+    await ref.read(deviceRegistrationProvider.notifier).registerCurrentDevice();
+    return AuthState.authenticated(user);
+  }
+
+  Future&lt;void&gt; login(String email, String password) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final repo = ref.read(authRepositoryProvider);
+      final (accessToken, refreshToken) = await repo.login(email, password);
+      await ref.read(secureTokenStorageProvider).saveTokens(accessToken, refreshToken);
+
+      final user = await repo.fetchMe();
+      await ref.read(deviceRegistrationProvider.notifier).registerCurrentDevice();
+      return AuthState.authenticated(user);
+    });
+  }
+
+  Future&lt;void&gt; register({
+    required String fullName,
+    required String email,
+    required String password,
+    required String phoneE164,
+    required String timezone,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final repo = ref.read(authRepositoryProvider);
+      final (user, accessToken, refreshToken) = await repo.register(
+        fullName: fullName,
+        email: email,
+        password: password,
+        phoneE164: phoneE164,
+        timezone: timezone,
+      );
+      await ref.read(secureTokenStorageProvider).saveTokens(accessToken, refreshToken);
+      await ref.read(deviceRegistrationProvider.notifier).registerCurrentDevice();
+      return AuthState.authenticated(user);
+    });
+  }
+
+  Future&lt;bool&gt; refreshSession() async {
+    final storage = ref.read(secureTokenStorageProvider);
+    final refreshToken = await storage.readRefreshToken();
+    if (refreshToken == null) return false;
+
+    try {
+      final (accessToken, newRefreshToken) =
+          await ref.read(authRepositoryProvider).refresh(refreshToken);
+      await storage.saveTokens(accessToken, newRefreshToken);
+      return true;
+    } on DioException {
+      await storage.clear();
+      state = const AsyncData(AuthState.unauthenticated());
+      return false;
+    }
+  }
+
+  Future&lt;void&gt; logout() async {
+    final storage = ref.read(secureTokenStorageProvider);
+    final refreshToken = await storage.readRefreshToken();
+    if (refreshToken != null) {
+      await ref.read(authRepositoryProvider).logout(refreshToken).catchError((_) {});
+    }
+    await storage.clear();
+    state = const AsyncData(AuthState.unauthenticated());
+  }
+}</pre>
+        <p>Si <code>refreshSession()</code> falla (token revocado o reutilizado, §10), limpia el storage y pone el estado en <code>unauthenticated</code> directamente — no lanza una excepción para que cada pantalla la atrape a su manera.</p>
+
+        <pre class="code">class SecureTokenStorage {
+  SecureTokenStorage(this._storage);
+  final FlutterSecureStorage _storage;
+
+  Future&lt;void&gt; saveTokens(String accessToken, String refreshToken) async {
+    await _storage.write(key: 'access_token', value: accessToken);
+    await _storage.write(key: 'refresh_token', value: refreshToken);
+  }
+
+  Future&lt;String?&gt; readAccessToken() =&gt; _storage.read(key: 'access_token');
+  Future&lt;String?&gt; readRefreshToken() =&gt; _storage.read(key: 'refresh_token');
+
+  Future&lt;void&gt; clear() async {
+    await _storage.delete(key: 'access_token');
+    await _storage.delete(key: 'refresh_token');
+  }
+}
+
+final secureTokenStorageProvider =
+    Provider((ref) =&gt; SecureTokenStorage(const FlutterSecureStorage()));</pre>
+
+        <h3>El router redirige, las pantallas no</h3>
+        <p><code>GoRouterRefreshStream</code> adapta el <code>Stream</code> del provider a un <code>Listenable</code>, para que <code>go_router</code> reevalúe <code>redirect</code> cada vez que <code>AuthState</code> cambia — sin esto, pasar de <code>unauthenticated</code> a <code>authenticated</code> después de un login exitoso no movería a nadie de pantalla hasta la siguiente navegación manual.</p>
+        <pre class="code">class GoRouterRefreshStream extends ChangeNotifier {
+  GoRouterRefreshStream(Stream&lt;dynamic&gt; stream) {
+    notifyListeners();
+    _subscription = stream.asBroadcastStream().listen((_) =&gt; notifyListeners());
+  }
+
+  late final StreamSubscription&lt;dynamic&gt; _subscription;
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+}
+
+final goRouterProvider = Provider&lt;GoRouter&gt;((ref) {
+  final authNotifier = ref.watch(authNotifierProvider.notifier);
+
+  return GoRouter(
+    refreshListenable: GoRouterRefreshStream(authNotifier.stream),
+    redirect: (context, state) {
+      final auth = ref.read(authNotifierProvider).valueOrNull;
+      final isAuthRoute =
+          state.matchedLocation == '/login' || state.matchedLocation == '/register';
+
+      if (auth == null) return null; // aún restaurando la sesión, no redirigir todavía
+      final isAuthenticated = auth is _Authenticated;
+
+      if (!isAuthenticated &amp;&amp; !isAuthRoute) return '/login';
+      if (isAuthenticated &amp;&amp; isAuthRoute) return '/';
+      return null;
+    },
+    routes: [
+      GoRoute(path: '/login', builder: (context, state) =&gt; const LoginScreen()),
+      GoRoute(path: '/register', builder: (context, state) =&gt; const RegisterScreen()),
+      // ...resto de rutas de la §12 y §14
+    ],
+  );
+});</pre>
+
+        <h3>Pantalla de login</h3>
+        <p>El botón de "Entrar" queda deshabilitado mientras <code>authState.isLoading</code>, y los errores se muestran con el mensaje real que devuelve el backend (§6, <code>{"error": {"message": ...}}</code>) en vez de un genérico — "Credenciales inválidas" le dice más a alguien que "Error 401".</p>
+        <pre class="code">class LoginScreen extends ConsumerStatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  ConsumerState&lt;LoginScreen&gt; createState() =&gt; _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState&lt;LoginScreen&gt; {
+  final _formKey = GlobalKey&lt;FormState&gt;();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authNotifierProvider);
+
+    ref.listen(authNotifierProvider, (previous, next) {
+      final error = next.errorOrNull;
+      if (error != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_mapAuthError(error))));
+      }
+    });
+
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('OmniTask', style: Theme.of(context).textTheme.headlineMedium),
+                  const SizedBox(height: 8),
+                  const Text('Inicia sesión para ver tu agenda'),
+                  const SizedBox(height: 32),
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: 'Correo'),
+                    validator: (v) =&gt; (v == null || !v.contains('@')) ? 'Correo inválido' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    decoration: InputDecoration(
+                      labelText: 'Contraseña',
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscurePassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined),
+                        onPressed: () =&gt; setState(() =&gt; _obscurePassword = !_obscurePassword),
+                      ),
+                    ),
+                    validator: (v) =&gt;
+                        (v == null || v.isEmpty) ? 'La contraseña es obligatoria' : null,
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed: authState.isLoading ? null : _submit,
+                    child: authState.isLoading
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Entrar'),
+                  ),
+                  TextButton(
+                    onPressed: () =&gt; context.push('/register'),
+                    child: const Text('¿No tienes cuenta? Regístrate'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    ref.read(authNotifierProvider.notifier)
+        .login(_emailController.text.trim(), _passwordController.text);
+  }
+}
+
+String _mapAuthError(Object error) {
+  if (error is DioException) {
+    final message = error.response?.data?['error']?['message'] as String?;
+    if (message != null) return message;
+  }
+  return 'No pudimos iniciar sesión. Intenta de nuevo.';
+}</pre>
+        <p>Nótese que <code>_submit()</code> no navega a ningún lado tras el éxito — solo llama a <code>login(...)</code>. El <code>redirect</code> del router de arriba es quien saca a la persona de <code>/login</code> en cuanto <code>AuthState</code> pasa a <code>authenticated</code>.</p>
+
+        <h3>Pantalla de registro: la zona horaria nunca la escribe la persona</h3>
+        <p>Pedirle a alguien que teclee un identificador IANA (<code>America/Bogota</code>) es invitar al error justo en el campo que la §9 exige válido. En vez de un selector, se detecta del dispositivo con <code>flutter_timezone</code> en el momento de enviar el formulario.</p>
+        <pre class="code">class RegisterScreen extends ConsumerStatefulWidget {
+  const RegisterScreen({super.key});
+
+  @override
+  ConsumerState&lt;RegisterScreen&gt; createState() =&gt; _RegisterScreenState();
+}
+
+class _RegisterScreenState extends ConsumerState&lt;RegisterScreen&gt; {
+  final _formKey = GlobalKey&lt;FormState&gt;();
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authNotifierProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Crear cuenta')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: 'Nombre completo'),
+                validator: (v) =&gt; (v == null || v.trim().isEmpty) ? 'Obligatorio' : null,
+              ),
+              TextFormField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Correo'),
+                validator: (v) =&gt; (v == null || !v.contains('@')) ? 'Correo inválido' : null,
+              ),
+              TextFormField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'Celular', hintText: '+57 300 000 0000'),
+                validator: (v) =&gt;
+                    (v == null || !v.startsWith('+')) ? 'Incluye el indicativo, ej. +57' : null,
+              ),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Contraseña'),
+                validator: (v) =&gt; (v == null || v.length &lt; 8) ? 'Mínimo 8 caracteres' : null,
+              ),
+              TextFormField(
+                controller: _confirmController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Confirmar contraseña'),
+                validator: (v) =&gt;
+                    (v != _passwordController.text) ? 'Las contraseñas no coinciden' : null,
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: authState.isLoading ? null : _submit,
+                child: const Text('Crear cuenta'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future&lt;void&gt; _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    final timezone = await FlutterTimezone.getLocalTimezone();
+
+    ref.read(authNotifierProvider.notifier).register(
+          fullName: _nameController.text.trim(),
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+          phoneE164: _phoneController.text.trim(),
+          timezone: timezone,
+        );
+  }
+}</pre>
+        <p>Las validaciones de mínimo 8 caracteres y de "las contraseñas coinciden" son puramente de UX inmediata — el backend igual valida la forma del <code>password</code> en <code>UserCreate</code> (§9); el cliente solo evita el viaje de ida y vuelta para un error que ya se veía venir.</p>
+
+        <div class="callout">
+          <span class="label">Fuera de alcance de esta fase</span>
+          Recuperación de contraseña ("olvidé mi contraseña") no está en el alcance descrito hasta ahora — se puede sumar como un flujo adicional de <code>/auth</code> (token de un solo uso enviado por correo o WhatsApp) cuando el resto del auth esté estable en producción.
+        </div>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §14 añadida: pantallas de detalle y edición de actividad · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §15 añadida: pantallas de login y registro · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>

@@ -25,6 +25,7 @@
 12. [Frontend Flutter: Riverpod y vistas de calendario](#12--frontend-flutter-riverpod-y-vistas-de-calendario)
 13. [CI/CD — Fase 7](#13--cicd--fase-7)
 14. [Pantallas de detalle y edición de actividad](#14--pantallas-de-detalle-y-edición-de-actividad)
+15. [Pantallas de login y registro](#15--pantallas-de-login-y-registro)
 
 ---
 
@@ -1794,6 +1795,452 @@ class _DateTimeField extends StatelessWidget {
 ### Selector de contacto
 
 `ContactPickerField` es un `Autocomplete<Contact>` con debounce que llama a `GET /contacts?search=` (§6) según se escribe. No trae la lista completa de contactos al abrir el formulario — para una clínica con cientos de pacientes, cargarlos todos de una vez sería tanto lento como innecesario.
+
+---
+
+## §15 — Pantallas de login y registro
+
+La pieza que ata todo esto: ninguna de las dos pantallas navega manualmente al entrar — el `redirect` de `go_router` reacciona al estado de `authNotifierProvider` y mueve a la persona a donde corresponde. Login y registro solo cambian ese estado; no deciden a dónde ir después.
+
+### Modelos: User y AuthState
+
+`timezone` viaja en el modelo de usuario desde el registro — es el mismo valor que la §9 exige como identificador IANA válido, y aquí nunca lo escribe la persona a mano (más abajo).
+
+```dart
+@freezed
+class User with _$User {
+  const factory User({
+    required String id,
+    required String fullName,
+    required String email,
+    required String timezone,
+  }) = _User;
+
+  factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);
+}
+
+@freezed
+sealed class AuthState with _$AuthState {
+  const factory AuthState.unknown() = _Unknown;
+  const factory AuthState.unauthenticated() = _Unauthenticated;
+  const factory AuthState.authenticated(User user) = _Authenticated;
+}
+```
+
+### Repositorio: los cinco endpoints de `/auth` de la §6
+
+```dart
+class AuthRepository {
+  AuthRepository(this._dio);
+  final Dio _dio;
+
+  Future<(User, String, String)> register({
+    required String fullName,
+    required String email,
+    required String password,
+    required String phoneE164,
+    required String timezone,
+  }) async {
+    final response = await _dio.post('/auth/register', data: {
+      'full_name': fullName,
+      'email': email,
+      'password': password,
+      'phone_e164': phoneE164,
+      'timezone': timezone,
+    });
+    return (
+      User.fromJson(response.data['user']),
+      response.data['access_token'] as String,
+      response.data['refresh_token'] as String,
+    );
+  }
+
+  Future<(String, String)> login(String email, String password) async {
+    final response = await _dio.post('/auth/login', data: {
+      'email': email,
+      'password': password,
+    });
+    return (response.data['access_token'] as String, response.data['refresh_token'] as String);
+  }
+
+  Future<User> fetchMe() async {
+    final response = await _dio.get('/auth/me');
+    return User.fromJson(response.data);
+  }
+
+  Future<(String, String)> refresh(String refreshToken) async {
+    final response = await _dio.post('/auth/refresh', data: {'refresh_token': refreshToken});
+    return (response.data['access_token'] as String, response.data['refresh_token'] as String);
+  }
+
+  Future<void> logout(String refreshToken) {
+    return _dio.post('/auth/logout', data: {'refresh_token': refreshToken});
+  }
+}
+```
+
+### AuthNotifier: la única puerta hacia el estado de sesión
+
+Al arrancar la app, `build()` intenta restaurar la sesión con el refresh token guardado — el mismo `refreshSession()` que ya usa el interceptor de Dio de la §12 cuando un 401 lo dispara a mitad de una petición cualquiera. Es la misma función, dos disparadores distintos.
+
+```dart
+@riverpod
+class AuthNotifier extends _$AuthNotifier {
+  @override
+  Future<AuthState> build() async {
+    final refreshToken = await ref.watch(secureTokenStorageProvider).readRefreshToken();
+    if (refreshToken == null) return const AuthState.unauthenticated();
+    return _restoreSession();
+  }
+
+  Future<AuthState> _restoreSession() async {
+    final refreshed = await refreshSession();
+    if (!refreshed) return const AuthState.unauthenticated();
+
+    final user = await ref.read(authRepositoryProvider).fetchMe();
+    await ref.read(deviceRegistrationProvider.notifier).registerCurrentDevice();
+    return AuthState.authenticated(user);
+  }
+
+  Future<void> login(String email, String password) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final repo = ref.read(authRepositoryProvider);
+      final (accessToken, refreshToken) = await repo.login(email, password);
+      await ref.read(secureTokenStorageProvider).saveTokens(accessToken, refreshToken);
+
+      final user = await repo.fetchMe();
+      await ref.read(deviceRegistrationProvider.notifier).registerCurrentDevice();
+      return AuthState.authenticated(user);
+    });
+  }
+
+  Future<void> register({
+    required String fullName,
+    required String email,
+    required String password,
+    required String phoneE164,
+    required String timezone,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final repo = ref.read(authRepositoryProvider);
+      final (user, accessToken, refreshToken) = await repo.register(
+        fullName: fullName,
+        email: email,
+        password: password,
+        phoneE164: phoneE164,
+        timezone: timezone,
+      );
+      await ref.read(secureTokenStorageProvider).saveTokens(accessToken, refreshToken);
+      await ref.read(deviceRegistrationProvider.notifier).registerCurrentDevice();
+      return AuthState.authenticated(user);
+    });
+  }
+
+  Future<bool> refreshSession() async {
+    final storage = ref.read(secureTokenStorageProvider);
+    final refreshToken = await storage.readRefreshToken();
+    if (refreshToken == null) return false;
+
+    try {
+      final (accessToken, newRefreshToken) =
+          await ref.read(authRepositoryProvider).refresh(refreshToken);
+      await storage.saveTokens(accessToken, newRefreshToken);
+      return true;
+    } on DioException {
+      await storage.clear();
+      state = const AsyncData(AuthState.unauthenticated());
+      return false;
+    }
+  }
+
+  Future<void> logout() async {
+    final storage = ref.read(secureTokenStorageProvider);
+    final refreshToken = await storage.readRefreshToken();
+    if (refreshToken != null) {
+      await ref.read(authRepositoryProvider).logout(refreshToken).catchError((_) {});
+    }
+    await storage.clear();
+    state = const AsyncData(AuthState.unauthenticated());
+  }
+}
+```
+
+Si `refreshSession()` falla (token revocado o reutilizado, §10), limpia el storage y pone el estado en `unauthenticated` directamente — no lanza una excepción para que cada pantalla la atrape a su manera.
+
+```dart
+class SecureTokenStorage {
+  SecureTokenStorage(this._storage);
+  final FlutterSecureStorage _storage;
+
+  Future<void> saveTokens(String accessToken, String refreshToken) async {
+    await _storage.write(key: 'access_token', value: accessToken);
+    await _storage.write(key: 'refresh_token', value: refreshToken);
+  }
+
+  Future<String?> readAccessToken() => _storage.read(key: 'access_token');
+  Future<String?> readRefreshToken() => _storage.read(key: 'refresh_token');
+
+  Future<void> clear() async {
+    await _storage.delete(key: 'access_token');
+    await _storage.delete(key: 'refresh_token');
+  }
+}
+
+final secureTokenStorageProvider =
+    Provider((ref) => SecureTokenStorage(const FlutterSecureStorage()));
+```
+
+### El router redirige, las pantallas no
+
+`GoRouterRefreshStream` adapta el `Stream` del provider a un `Listenable`, para que `go_router` reevalúe `redirect` cada vez que `AuthState` cambia — sin esto, pasar de `unauthenticated` a `authenticated` después de un login exitoso no movería a nadie de pantalla hasta la siguiente navegación manual.
+
+```dart
+class GoRouterRefreshStream extends ChangeNotifier {
+  GoRouterRefreshStream(Stream<dynamic> stream) {
+    notifyListeners();
+    _subscription = stream.asBroadcastStream().listen((_) => notifyListeners());
+  }
+
+  late final StreamSubscription<dynamic> _subscription;
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+}
+
+final goRouterProvider = Provider<GoRouter>((ref) {
+  final authNotifier = ref.watch(authNotifierProvider.notifier);
+
+  return GoRouter(
+    refreshListenable: GoRouterRefreshStream(authNotifier.stream),
+    redirect: (context, state) {
+      final auth = ref.read(authNotifierProvider).valueOrNull;
+      final isAuthRoute =
+          state.matchedLocation == '/login' || state.matchedLocation == '/register';
+
+      if (auth == null) return null; // aún restaurando la sesión, no redirigir todavía
+      final isAuthenticated = auth is _Authenticated;
+
+      if (!isAuthenticated && !isAuthRoute) return '/login';
+      if (isAuthenticated && isAuthRoute) return '/';
+      return null;
+    },
+    routes: [
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
+      GoRoute(path: '/register', builder: (context, state) => const RegisterScreen()),
+      // ...resto de rutas de la §12 y §14
+    ],
+  );
+});
+```
+
+### Pantalla de login
+
+El botón de "Entrar" queda deshabilitado mientras `authState.isLoading`, y los errores se muestran con el mensaje real que devuelve el backend (§6, `{"error": {"message": ...}}`) en vez de un genérico — "Credenciales inválidas" le dice más a alguien que "Error 401".
+
+```dart
+class LoginScreen extends ConsumerStatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends ConsumerState<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _obscurePassword = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authNotifierProvider);
+
+    ref.listen(authNotifierProvider, (previous, next) {
+      final error = next.errorOrNull;
+      if (error != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(_mapAuthError(error))));
+      }
+    });
+
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text('OmniTask', style: Theme.of(context).textTheme.headlineMedium),
+                  const SizedBox(height: 8),
+                  const Text('Inicia sesión para ver tu agenda'),
+                  const SizedBox(height: 32),
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: 'Correo'),
+                    validator: (v) => (v == null || !v.contains('@')) ? 'Correo inválido' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    decoration: InputDecoration(
+                      labelText: 'Contraseña',
+                      suffixIcon: IconButton(
+                        icon: Icon(_obscurePassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined),
+                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                      ),
+                    ),
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'La contraseña es obligatoria' : null,
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed: authState.isLoading ? null : _submit,
+                    child: authState.isLoading
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Entrar'),
+                  ),
+                  TextButton(
+                    onPressed: () => context.push('/register'),
+                    child: const Text('¿No tienes cuenta? Regístrate'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    ref.read(authNotifierProvider.notifier)
+        .login(_emailController.text.trim(), _passwordController.text);
+  }
+}
+
+String _mapAuthError(Object error) {
+  if (error is DioException) {
+    final message = error.response?.data?['error']?['message'] as String?;
+    if (message != null) return message;
+  }
+  return 'No pudimos iniciar sesión. Intenta de nuevo.';
+}
+```
+
+Nótese que `_submit()` no navega a ningún lado tras el éxito — solo llama a `login(...)`. El `redirect` del router de arriba es quien saca a la persona de `/login` en cuanto `AuthState` pasa a `authenticated`.
+
+### Pantalla de registro: la zona horaria nunca la escribe la persona
+
+Pedirle a alguien que teclee un identificador IANA (`America/Bogota`) es invitar al error justo en el campo que la §9 exige válido. En vez de un selector, se detecta del dispositivo con `flutter_timezone` en el momento de enviar el formulario.
+
+```dart
+class RegisterScreen extends ConsumerStatefulWidget {
+  const RegisterScreen({super.key});
+
+  @override
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
+}
+
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = ref.watch(authNotifierProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Crear cuenta')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: 'Nombre completo'),
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Obligatorio' : null,
+              ),
+              TextFormField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(labelText: 'Correo'),
+                validator: (v) => (v == null || !v.contains('@')) ? 'Correo inválido' : null,
+              ),
+              TextFormField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'Celular', hintText: '+57 300 000 0000'),
+                validator: (v) =>
+                    (v == null || !v.startsWith('+')) ? 'Incluye el indicativo, ej. +57' : null,
+              ),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Contraseña'),
+                validator: (v) => (v == null || v.length < 8) ? 'Mínimo 8 caracteres' : null,
+              ),
+              TextFormField(
+                controller: _confirmController,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Confirmar contraseña'),
+                validator: (v) =>
+                    (v != _passwordController.text) ? 'Las contraseñas no coinciden' : null,
+              ),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: authState.isLoading ? null : _submit,
+                child: const Text('Crear cuenta'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    final timezone = await FlutterTimezone.getLocalTimezone();
+
+    ref.read(authNotifierProvider.notifier).register(
+          fullName: _nameController.text.trim(),
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+          phoneE164: _phoneController.text.trim(),
+          timezone: timezone,
+        );
+  }
+}
+```
+
+Las validaciones de mínimo 8 caracteres y de "las contraseñas coinciden" son puramente de UX inmediata — el backend igual valida la forma del `password` en `UserCreate` (§9); el cliente solo evita el viaje de ida y vuelta para un error que ya se veía venir.
+
+> **Fuera de alcance de esta fase:** recuperación de contraseña ("olvidé mi contraseña") no está en el alcance descrito hasta ahora — se puede sumar como un flujo adicional de `/auth` (token de un solo uso enviado por correo o WhatsApp) cuando el resto del auth esté estable en producción.
 
 ---
 
