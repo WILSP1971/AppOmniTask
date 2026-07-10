@@ -1,0 +1,1959 @@
+<title>OmniTask — Documento de Arquitectura</title>
+<style>
+  :root{
+    --bg:#F2F4F5;
+    --paper:#FFFFFF;
+    --ink:#1B222B;
+    --muted:#5B6772;
+    --line:#D8DEE2;
+    --accent:#1F6F64;
+    --accent-dark:#164F47;
+    --accent-soft:#DCEAE7;
+    --warn:#A5631E;
+    --warn-soft:#F3E4D3;
+    --font-head: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --font-body: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+    --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--font-body);
+    font-size:17px;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--accent-dark);}
+  a:focus-visible, button:focus-visible, summary:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+
+  .sheet{
+    max-width:1180px;
+    margin:0 auto;
+    padding:0 32px 96px;
+  }
+
+  /* Cover */
+  .cover{
+    padding:64px 0 40px;
+    border-bottom:1px solid var(--line);
+    margin-bottom:40px;
+  }
+  .cover .kicker{
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--accent-dark);
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .cover .kicker::before{
+    content:"";
+    width:22px; height:2px;
+    background:var(--accent);
+    display:inline-block;
+  }
+  .cover h1{
+    font-family:var(--font-head);
+    font-weight:700;
+    font-size:clamp(30px, 4vw, 44px);
+    letter-spacing:-0.01em;
+    text-wrap:balance;
+    margin:18px 0 12px;
+    max-width:16ch;
+  }
+  .cover p.lede{
+    font-size:19px;
+    color:var(--muted);
+    max-width:62ch;
+    margin:0 0 22px;
+  }
+  .meta-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:24px;
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    color:var(--muted);
+  }
+  .meta-row span b{color:var(--ink); font-weight:600;}
+
+  /* Layout: index rail + content */
+  .layout{
+    display:grid;
+    grid-template-columns:200px minmax(0,1fr);
+    gap:56px;
+    align-items:start;
+  }
+  nav.index{
+    position:sticky;
+    top:28px;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+    font-family:var(--font-mono);
+    font-size:13px;
+  }
+  nav.index a{
+    color:var(--muted);
+    text-decoration:none;
+    padding:7px 0;
+    border-left:2px solid transparent;
+    padding-left:12px;
+  }
+  nav.index a:hover, nav.index a:focus-visible{
+    color:var(--accent-dark);
+    border-left-color:var(--accent);
+  }
+
+  main{min-width:0;}
+
+  section{
+    margin-bottom:64px;
+    scroll-margin-top:28px;
+  }
+  .sec-head{
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    margin-bottom:18px;
+  }
+  .sec-num{
+    font-family:var(--font-mono);
+    font-size:14px;
+    color:var(--accent-dark);
+    background:var(--accent-soft);
+    border-radius:3px;
+    padding:2px 7px;
+  }
+  h2{
+    font-family:var(--font-head);
+    font-size:26px;
+    font-weight:700;
+    letter-spacing:-0.01em;
+    margin:0;
+    text-wrap:balance;
+  }
+  h3{
+    font-family:var(--font-head);
+    font-size:18px;
+    font-weight:600;
+    margin:30px 0 10px;
+  }
+  section > p, section > ul{
+    max-width:68ch;
+  }
+  p{margin:0 0 14px;}
+  ul, ol{padding-left:22px; margin:0 0 14px;}
+  li{margin-bottom:6px;}
+
+  .callout{
+    max-width:68ch;
+    border:1px solid var(--line);
+    border-left:3px solid var(--accent);
+    background:var(--paper);
+    padding:16px 20px;
+    border-radius:4px;
+    margin:18px 0;
+    font-size:15.5px;
+  }
+  .callout .label{
+    font-family:var(--font-mono);
+    font-size:11.5px;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    color:var(--accent-dark);
+    display:block;
+    margin-bottom:6px;
+  }
+  .callout.alt{border-left-color:var(--warn);}
+  .callout.alt .label{color:var(--warn);}
+
+  /* Diagram */
+  .diagram{
+    overflow-x:auto;
+    padding:28px 24px;
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:8px;
+    margin:22px 0 26px;
+  }
+  .diagram-grid{
+    display:grid;
+    grid-template-columns:repeat(4, minmax(180px,1fr));
+    gap:0 18px;
+    min-width:820px;
+  }
+  .lane-title{
+    font-family:var(--font-mono);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.09em;
+    color:var(--muted);
+    text-align:center;
+    padding-bottom:14px;
+    border-bottom:1px dashed var(--line);
+    margin-bottom:18px;
+  }
+  .box{
+    background:var(--bg);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:12px 13px;
+    font-family:var(--font-head);
+    font-size:13.5px;
+    font-weight:600;
+    text-align:center;
+    position:relative;
+  }
+  .box.accent{border-color:var(--accent); background:var(--accent-soft); color:var(--accent-dark);}
+  .box .sub{
+    display:block;
+    font-family:var(--font-mono);
+    font-weight:400;
+    font-size:11px;
+    color:var(--muted);
+    margin-top:4px;
+  }
+  .stack{display:flex; flex-direction:column; gap:14px;}
+  .arrow-row{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    color:var(--muted);
+    height:14px;
+  }
+  .connector{
+    position:relative;
+    height:0;
+  }
+  .connector::after{
+    content:"→";
+    position:absolute;
+    top:-32px;
+    right:-24px;
+    color:var(--accent);
+    font-size:16px;
+  }
+  .proto{
+    text-align:center;
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    color:var(--muted);
+    margin:10px 0 -2px;
+    letter-spacing:.02em;
+  }
+
+  /* Tables (schema) */
+  .table-wrap{overflow-x:auto; margin:14px 0 30px;}
+  table.schema{
+    border-collapse:collapse;
+    width:100%;
+    min-width:560px;
+    font-size:14.5px;
+    background:var(--paper);
+  }
+  table.schema caption{
+    text-align:left;
+    font-family:var(--font-head);
+    font-weight:700;
+    font-size:15.5px;
+    padding:0 0 8px 2px;
+    caption-side:top;
+  }
+  table.schema caption .tname{
+    font-family:var(--font-mono);
+    background:var(--ink);
+    color:#fff;
+    padding:2px 8px;
+    border-radius:3px;
+    font-weight:500;
+    font-size:14px;
+  }
+  table.schema th{
+    text-align:left;
+    font-family:var(--font-mono);
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:var(--muted);
+    border-bottom:1px solid var(--line);
+    padding:8px 12px;
+  }
+  table.schema td{
+    border-bottom:1px solid var(--line);
+    padding:9px 12px;
+    vertical-align:top;
+    font-family:var(--font-mono);
+    font-size:13.5px;
+  }
+  table.schema td.desc{font-family:var(--font-body); font-size:14.5px;}
+  table.schema tr:last-child td{border-bottom:none;}
+  .pill{
+    display:inline-block;
+    font-family:var(--font-mono);
+    font-size:10.5px;
+    padding:1.5px 6px;
+    border-radius:3px;
+    margin:1px 3px 1px 0;
+    white-space:nowrap;
+  }
+  .pill.pk{background:var(--accent); color:#fff;}
+  .pill.fk{background:var(--accent-soft); color:var(--accent-dark); border:1px solid var(--accent);}
+  .pill.null{background:var(--warn-soft); color:var(--warn);}
+  .pill.uq{background:var(--bg); color:var(--muted); border:1px solid var(--line);}
+
+  .rel-list{
+    font-family:var(--font-mono);
+    font-size:13.5px;
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:6px;
+    padding:16px 20px;
+    margin:0 0 30px;
+    max-width:68ch;
+  }
+  .rel-list div{padding:3px 0;}
+  .rel-list b{color:var(--accent-dark);}
+
+  /* Roadmap */
+  .phase{
+    display:grid;
+    grid-template-columns:52px minmax(0,1fr);
+    gap:18px;
+    padding:20px 0;
+    border-top:1px solid var(--line);
+  }
+  .phase:first-of-type{border-top:none;}
+  .phase-num{
+    font-family:var(--font-mono);
+    font-size:22px;
+    font-weight:600;
+    color:var(--accent);
+  }
+  .phase h4{
+    font-family:var(--font-head);
+    font-size:17px;
+    margin:0 0 6px;
+  }
+  .phase .goal{color:var(--muted); font-size:15px; margin-bottom:10px;}
+  .phase ul{margin-bottom:0; max-width:64ch;}
+  .badge-row{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;}
+  .badge{
+    font-family:var(--font-mono);
+    font-size:11px;
+    background:var(--bg);
+    border:1px solid var(--line);
+    color:var(--muted);
+    padding:3px 8px;
+    border-radius:12px;
+  }
+
+  /* Endpoint reference */
+  .endpoint{
+    border:1px solid var(--line);
+    border-radius:6px;
+    background:var(--paper);
+    margin-bottom:10px;
+    overflow:hidden;
+  }
+  .endpoint summary{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:11px 16px;
+    cursor:pointer;
+    list-style:none;
+    font-family:var(--font-mono);
+    font-size:13.5px;
+  }
+  .endpoint summary::-webkit-details-marker{display:none;}
+  .endpoint summary::before{
+    content:"+";
+    color:var(--muted);
+    font-family:var(--font-head);
+    width:12px;
+  }
+  .endpoint[open] summary::before{content:"–";}
+  .endpoint summary .path{color:var(--ink); font-weight:500;}
+  .endpoint summary .desc-inline{
+    color:var(--muted);
+    font-family:var(--font-body);
+    font-size:14px;
+    margin-left:auto;
+    padding-left:16px;
+    text-align:right;
+  }
+  .endpoint .body{
+    padding:4px 16px 16px 42px;
+    border-top:1px solid var(--line);
+  }
+  .endpoint .body p{font-size:14.5px; margin:10px 0;}
+  .method{
+    font-family:var(--font-mono);
+    font-size:11px;
+    font-weight:700;
+    padding:2px 7px;
+    border-radius:3px;
+    letter-spacing:.02em;
+    min-width:52px;
+    text-align:center;
+  }
+  .method.get{background:var(--accent-soft); color:var(--accent-dark);}
+  .method.post{background:var(--accent); color:#fff;}
+  .method.patch{background:var(--warn-soft); color:var(--warn);}
+  .method.delete{background:var(--warn); color:#fff;}
+  pre.code{
+    background:#1B222B;
+    color:#DCE3E8;
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    line-height:1.55;
+    padding:14px 16px;
+    border-radius:6px;
+    overflow-x:auto;
+    margin:8px 0;
+  }
+  pre.code .k{color:#8FD3C7;}
+  pre.code .s{color:#E8C07D;}
+  .flow-strip{
+    display:flex;
+    align-items:center;
+    gap:0;
+    overflow-x:auto;
+    margin:18px 0 26px;
+    padding:20px;
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:8px;
+  }
+  .flow-step{
+    flex:0 0 auto;
+    min-width:150px;
+    text-align:center;
+    font-family:var(--font-head);
+    font-size:13px;
+    font-weight:600;
+  }
+  .flow-step .tag{
+    display:block;
+    font-family:var(--font-mono);
+    font-weight:400;
+    font-size:10.5px;
+    color:var(--muted);
+    margin-top:4px;
+  }
+  .flow-step.pending .tag{color:var(--warn);}
+  .flow-step.done .tag{color:var(--accent-dark);}
+  .flow-arrow{
+    flex:0 0 auto;
+    color:var(--muted);
+    padding:0 14px;
+    font-size:15px;
+  }
+  .tmpl-card{
+    border:1px solid var(--line);
+    border-left:3px solid var(--accent);
+    border-radius:4px;
+    padding:14px 18px;
+    margin:14px 0;
+    background:var(--paper);
+  }
+  .tmpl-card h4{font-family:var(--font-head); font-size:15px; margin:0 0 8px;}
+  .tmpl-card .body-text{font-style:italic; color:var(--ink);}
+  .tmpl-card .vars{margin-top:8px; font-family:var(--font-mono); font-size:12.5px; color:var(--muted);}
+
+  footer{
+    margin-top:60px;
+    padding-top:24px;
+    border-top:1px solid var(--line);
+    font-family:var(--font-mono);
+    font-size:12.5px;
+    color:var(--muted);
+  }
+
+  @media (max-width:880px){
+    .layout{grid-template-columns:1fr;}
+    nav.index{position:static; flex-direction:row; flex-wrap:wrap; gap:4px 16px; padding-bottom:20px; border-bottom:1px solid var(--line); margin-bottom:20px;}
+    nav.index a{padding:4px 0; border-left:none;}
+    .phase{grid-template-columns:36px minmax(0,1fr);}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{scroll-behavior:auto !important;}
+  }
+</style>
+
+<div class="sheet">
+
+  <div class="cover">
+    <div class="kicker">Documento de arquitectura · Fase 1 de entregables</div>
+    <h1>OmniTask: agenda profesional con recordatorios y WhatsApp</h1>
+    <p class="lede">Arquitectura de sistema, esquema de base de datos y guía de desarrollo por fases para una aplicación móvil de calendario, citas y tareas con notificaciones push y confirmaciones automáticas por WhatsApp Business.</p>
+    <div class="meta-row">
+      <span>Preparado para: <b>Equipo de desarrollo — Clínica Campbell</b></span>
+      <span>Rol: <b>Arquitectura de software · Full-stack móvil</b></span>
+      <span>Fecha: <b>10 de julio de 2026</b></span>
+      <span>Estado: <b>Propuesta técnica v1</b></span>
+    </div>
+  </div>
+
+  <div class="layout">
+    <nav class="index">
+      <a href="#decisiones">§1 Decisiones de stack</a>
+      <a href="#arquitectura">§2 Arquitectura</a>
+      <a href="#esquema">§3 Base de datos</a>
+      <a href="#roadmap">§4 Fases de desarrollo</a>
+      <a href="#seguridad">§5 Seguridad y cumplimiento</a>
+      <a href="#endpoints">§6 Endpoints — Fase 1</a>
+      <a href="#whatsapp">§7 Plantillas WhatsApp</a>
+      <a href="#fase3">§8 Fase 3 — devices y scheduler</a>
+      <a href="#modelos">§9 Modelos — Fase 1</a>
+      <a href="#auth">§10 Servicio de auth</a>
+      <a href="#estructura">§11 Estructura del proyecto</a>
+      <a href="#flutter">§12 Frontend Flutter</a>
+      <a href="#cicd">§13 CI/CD — Fase 7</a>
+    </nav>
+
+    <main>
+
+      <section id="decisiones">
+        <div class="sec-head"><span class="sec-num">§1</span><h2>Decisiones de stack</h2></div>
+        <p>Tu propuesta original — Flutter, C#/FastAPI, MySQL, FCM y WhatsApp Cloud API — es una base sólida. Ajusto dos piezas para que el sistema encaje mejor con el requisito más delicado del proyecto: <em>fechas y recordatorios correctos entre zonas horarias, con envío confiable a WhatsApp</em>.</p>
+
+        <h3>Frontend — Flutter (sin cambios)</h3>
+        <p>Correcto para iOS y Android desde un solo código base. Para las vistas de calendario, usa <code>syncfusion_flutter_calendar</code> (vistas día/semana/mes con drag-and-drop listas de fábrica) o <code>table_calendar</code> si prefieres una dependencia más ligera y construir la vista de día a mano. Estado con <b>Riverpod</b>; es más fácil de testear que Bloc para un equipo pequeño y evita el boilerplate de Provider clásico.</p>
+
+        <h3>Backend — FastAPI (Python), no C#</h3>
+        <div class="callout">
+          <span class="label">Recomendación</span>
+          Consolida en un solo stack de backend: <b>Python + FastAPI</b>. Descarta C#/.NET para esta app.
+        </div>
+        <p>La razón no es preferencia de lenguaje: el núcleo de este producto es <em>trabajo asíncrono e integraciones I/O-bound</em> — sondear recordatorios cada minuto, llamar a la API de Meta, escuchar webhooks de estado, enviar push. FastAPI + Celery + Redis cubre exactamente ese patrón con librerías maduras (<code>httpx</code>, <code>celery</code>, <code>firebase-admin</code>) y un solo lenguaje entre API y workers. Mantener C# en paralelo solo duplicaría infraestructura sin beneficio funcional. Si tu equipo ya tiene fuerte inversión en .NET, ASP.NET Core + Hangfire es una alternativa igualmente válida — pero no mezcles ambos en el mismo servicio.</p>
+
+        <h3>Base de datos — PostgreSQL en vez de MySQL</h3>
+        <div class="callout alt">
+          <span class="label">Cambio propuesto</span>
+          PostgreSQL 16 en vez de MySQL. Justificación abajo.
+        </div>
+        <p>El requisito de "actividades sin fecha" y recordatorios entre zonas horarias depende de manejar tiempo con precisión. PostgreSQL tiene <code>TIMESTAMPTZ</code> nativo y funciones de calendario más completas que MySQL; además su tipo <code>JSONB</code> indexable es ideal para guardar las variables de las plantillas de WhatsApp y los payloads de webhook sin crear una tabla nueva por cada variante. Si por política interna de la clínica MySQL ya es el motor estándar, el esquema de la §3 se traduce sin cambios estructurales — solo cambia el tipo de columna de fecha.</p>
+
+        <h3>Resumen del stack final</h3>
+        <div class="table-wrap">
+          <table class="schema">
+            <tr><th>Capa</th><th>Tecnología</th><th class="desc">Rol</th></tr>
+            <tr><td>Móvil</td><td>Flutter 3.x</td><td class="desc">App única iOS/Android, Riverpod, calendario nativo</td></tr>
+            <tr><td>API</td><td>FastAPI (Python 3.12)</td><td class="desc">REST + auth, orquesta integraciones</td></tr>
+            <tr><td>Cola / jobs</td><td>Redis + Celery Beat</td><td class="desc">Recordatorios programados, reintentos de envío</td></tr>
+            <tr><td>Datos</td><td>PostgreSQL 16</td><td class="desc">Persistencia transaccional</td></tr>
+            <tr><td>Push</td><td>Firebase Cloud Messaging</td><td class="desc">Notificaciones nativas al dispositivo</td></tr>
+            <tr><td>Mensajería</td><td>WhatsApp Cloud API (Meta)</td><td class="desc">Confirmaciones y recordatorios por WhatsApp</td></tr>
+          </table>
+        </div>
+      </section>
+
+      <section id="arquitectura">
+        <div class="sec-head"><span class="sec-num">§2</span><h2>Arquitectura del sistema</h2></div>
+        <p>Cuatro capas: el cliente Flutter nunca habla directo con Meta ni con Firebase Admin — todo pasa por el backend, que es la única capa con credenciales de servicio. El dispositivo sí recibe el push directo de FCM (eso es infraestructura de Google, no de tu backend).</p>
+
+        <div class="diagram">
+          <div class="diagram-grid">
+            <div class="lane-title">Cliente</div>
+            <div class="lane-title">API</div>
+            <div class="lane-title">Datos &amp; cola</div>
+            <div class="lane-title">Integraciones externas</div>
+
+            <div class="box accent">Flutter App<span class="sub">iOS · Android</span></div>
+            <div class="box">FastAPI<span class="sub">Auth · CRUD · Webhooks</span></div>
+            <div class="box">PostgreSQL<span class="sub">users · activities · reminders</span></div>
+            <div class="box">FCM<span class="sub">Firebase Cloud Messaging</span></div>
+
+            <div class="proto">HTTPS + JWT ↓</div>
+            <div class="proto">SQLAlchemy ↓</div>
+            <div class="proto">Redis (broker) ↓</div>
+            <div class="proto">Admin SDK ↓</div>
+
+            <div class="box">Registro de token FCM<span class="sub">al iniciar sesión</span></div>
+            <div class="box">Celery Beat<span class="sub">escaneo de recordatorios cada 60s</span></div>
+            <div class="box">Redis<span class="sub">cola + resultados</span></div>
+            <div class="box">Push nativo<span class="sub">al dispositivo del usuario</span></div>
+
+            <div class="proto"></div>
+            <div class="proto">dispara ↓</div>
+            <div class="proto">↕</div>
+            <div class="proto">webhook ↑</div>
+
+            <div class="box"></div>
+            <div class="box">Celery Workers<span class="sub">envío + reintentos</span></div>
+            <div class="box"></div>
+            <div class="box accent">WhatsApp Cloud API<span class="sub">Meta Business</span></div>
+          </div>
+        </div>
+
+        <h3>Cómo fluye una cita con recordatorio por WhatsApp</h3>
+        <ol>
+          <li>El usuario crea una cita en Flutter → <code>POST /activities</code> con fecha/hora en su zona horaria local; el backend la normaliza a UTC antes de guardar.</li>
+          <li>El backend crea automáticamente uno o más registros en <code>reminders</code> (ej. 1 día antes, 1 hora antes) según la configuración del usuario.</li>
+          <li>Celery Beat revisa cada minuto qué recordatorios vencen; encola un job por cada uno.</li>
+          <li>El worker decide el canal: push vía Firebase Admin SDK, WhatsApp vía Cloud API, o ambos — y registra el resultado en <code>notification_log</code>.</li>
+          <li>Meta llama de vuelta al webhook del backend con el estado de entrega (enviado/entregado/leído/fallido); el backend actualiza el log y puede reintentar si falló.</li>
+        </ol>
+
+        <h3>Actividades sin fecha</h3>
+        <p>Se guardan en la misma tabla <code>activities</code> con <code>starts_at = NULL</code> y <code>status = 'unscheduled'</code>. Un job diario de Celery Beat agrupa las actividades sin fecha por usuario y dispara una notificación tipo "tienes 4 actividades pendientes por programar" — sin depender de una fecha que no existe.</p>
+      </section>
+
+      <section id="esquema">
+        <div class="sec-head"><span class="sec-num">§3</span><h2>Esquema de base de datos</h2></div>
+        <p>Siete tablas. Reuniones, citas, tareas y actividades comparten una sola tabla (<code>activities</code>) diferenciada por <code>type</code> — evita duplicar CRUD y notificaciones para cuatro conceptos que en la práctica son "algo con título, estado y quizá una fecha".</p>
+
+        <div class="rel-list">
+          <div><b>users</b> 1 ─── N <b>devices</b> <span style="color:var(--muted)">(tokens FCM, multi-dispositivo)</span></div>
+          <div><b>users</b> 1 ─── N <b>contacts</b> <span style="color:var(--muted)">(personas que reciben WhatsApp)</span></div>
+          <div><b>users</b> 1 ─── N <b>activities</b></div>
+          <div><b>contacts</b> 1 ─── N <b>activities</b> <span style="color:var(--muted)">(opcional)</span></div>
+          <div><b>activities</b> 1 ─── N <b>reminders</b></div>
+          <div><b>reminders</b> 1 ─── N <b>notification_log</b></div>
+          <div><b>whatsapp_templates</b> 1 ─── N <b>reminders</b> <span style="color:var(--muted)">(solo canal whatsapp)</span></div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="schema">
+            <caption><span class="tname">users</span></caption>
+            <tr><th>Columna</th><th>Tipo</th><th class="desc">Notas</th></tr>
+            <tr><td>id <span class="pill pk">PK</span></td><td>uuid</td><td class="desc"></td></tr>
+            <tr><td>full_name</td><td>text</td><td class="desc"></td></tr>
+            <tr><td>email <span class="pill uq">UQ</span></td><td>text</td><td class="desc">login</td></tr>
+            <tr><td>password_hash</td><td>text</td><td class="desc">bcrypt/argon2</td></tr>
+            <tr><td>phone_e164</td><td>text</td><td class="desc">formato +57...</td></tr>
+            <tr><td>timezone</td><td>text</td><td class="desc">IANA, ej. America/Bogota</td></tr>
+            <tr><td>role</td><td>enum</td><td class="desc">admin · profesional · asistente</td></tr>
+            <tr><td>created_at / updated_at</td><td>timestamptz</td><td class="desc"></td></tr>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table class="schema">
+            <caption><span class="tname">devices</span></caption>
+            <tr><th>Columna</th><th>Tipo</th><th class="desc">Notas</th></tr>
+            <tr><td>id <span class="pill pk">PK</span></td><td>uuid</td><td class="desc"></td></tr>
+            <tr><td>user_id <span class="pill fk">FK → users</span></td><td>uuid</td><td class="desc"></td></tr>
+            <tr><td>fcm_token</td><td>text</td><td class="desc">se rota al reinstalar la app</td></tr>
+            <tr><td>platform</td><td>enum</td><td class="desc">ios · android</td></tr>
+            <tr><td>last_seen_at</td><td>timestamptz</td><td class="desc"></td></tr>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table class="schema">
+            <caption><span class="tname">contacts</span></caption>
+            <tr><th>Columna</th><th>Tipo</th><th class="desc">Notas</th></tr>
+            <tr><td>id <span class="pill pk">PK</span></td><td>uuid</td><td class="desc"></td></tr>
+            <tr><td>user_id <span class="pill fk">FK → users</span></td><td>uuid</td><td class="desc">quién lo gestiona</td></tr>
+            <tr><td>full_name</td><td>text</td><td class="desc"></td></tr>
+            <tr><td>phone_e164</td><td>text</td><td class="desc">destinatario del WhatsApp</td></tr>
+            <tr><td>notes</td><td>text <span class="pill null">NULL</span></td><td class="desc"></td></tr>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table class="schema">
+            <caption><span class="tname">activities</span> <span style="font-weight:400; color:var(--muted); font-size:13px;">reuniones · citas · tareas · actividades</span></caption>
+            <tr><th>Columna</th><th>Tipo</th><th class="desc">Notas</th></tr>
+            <tr><td>id <span class="pill pk">PK</span></td><td>uuid</td><td class="desc"></td></tr>
+            <tr><td>user_id <span class="pill fk">FK → users</span></td><td>uuid</td><td class="desc"></td></tr>
+            <tr><td>contact_id <span class="pill fk">FK → contacts</span></td><td>uuid <span class="pill null">NULL</span></td><td class="desc">una tarea puede no tener contacto</td></tr>
+            <tr><td>type</td><td>enum</td><td class="desc">meeting · appointment · task · activity</td></tr>
+            <tr><td>title</td><td>text</td><td class="desc"></td></tr>
+            <tr><td>description</td><td>text <span class="pill null">NULL</span></td><td class="desc"></td></tr>
+            <tr><td>status</td><td>enum</td><td class="desc">unscheduled · scheduled · completed · cancelled</td></tr>
+            <tr><td>starts_at</td><td>timestamptz <span class="pill null">NULL</span></td><td class="desc">NULL = "sin fecha de calendario"</td></tr>
+            <tr><td>ends_at</td><td>timestamptz <span class="pill null">NULL</span></td><td class="desc"></td></tr>
+            <tr><td>timezone</td><td>text</td><td class="desc">tz al momento de crear, para render correcto</td></tr>
+            <tr><td>location</td><td>text <span class="pill null">NULL</span></td><td class="desc"></td></tr>
+            <tr><td>nudge_frequency_days</td><td>int <span class="pill null">NULL</span></td><td class="desc">cada cuánto recordar si sigue sin fecha</td></tr>
+            <tr><td>created_at / updated_at</td><td>timestamptz</td><td class="desc"></td></tr>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table class="schema">
+            <caption><span class="tname">reminders</span></caption>
+            <tr><th>Columna</th><th>Tipo</th><th class="desc">Notas</th></tr>
+            <tr><td>id <span class="pill pk">PK</span></td><td>uuid</td><td class="desc"></td></tr>
+            <tr><td>activity_id <span class="pill fk">FK → activities</span></td><td>uuid</td><td class="desc"></td></tr>
+            <tr><td>remind_at</td><td>timestamptz</td><td class="desc">calculado (ej. starts_at − 1h)</td></tr>
+            <tr><td>channel</td><td>enum</td><td class="desc">push · whatsapp · both</td></tr>
+            <tr><td>template_id <span class="pill fk">FK → whatsapp_templates</span></td><td>uuid <span class="pill null">NULL</span></td><td class="desc">solo si channel incluye whatsapp</td></tr>
+            <tr><td>status</td><td>enum</td><td class="desc">pending · sent · failed</td></tr>
+            <tr><td>sent_at</td><td>timestamptz <span class="pill null">NULL</span></td><td class="desc"></td></tr>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table class="schema">
+            <caption><span class="tname">notification_log</span></caption>
+            <tr><th>Columna</th><th>Tipo</th><th class="desc">Notas</th></tr>
+            <tr><td>id <span class="pill pk">PK</span></td><td>uuid</td><td class="desc"></td></tr>
+            <tr><td>reminder_id <span class="pill fk">FK → reminders</span></td><td>uuid <span class="pill null">NULL</span></td><td class="desc">NULL para avisos de sistema (ej. resumen de pendientes)</td></tr>
+            <tr><td>user_id <span class="pill fk">FK → users</span></td><td>uuid</td><td class="desc"></td></tr>
+            <tr><td>channel</td><td>enum</td><td class="desc">push · whatsapp</td></tr>
+            <tr><td>provider_message_id</td><td>text <span class="pill null">NULL</span></td><td class="desc">wamid de Meta / message-id de FCM</td></tr>
+            <tr><td>status</td><td>enum</td><td class="desc">queued · sent · delivered · read · failed</td></tr>
+            <tr><td>error_detail</td><td>text <span class="pill null">NULL</span></td><td class="desc"></td></tr>
+            <tr><td>created_at</td><td>timestamptz</td><td class="desc"></td></tr>
+          </table>
+        </div>
+
+        <div class="table-wrap">
+          <table class="schema">
+            <caption><span class="tname">whatsapp_templates</span></caption>
+            <tr><th>Columna</th><th>Tipo</th><th class="desc">Notas</th></tr>
+            <tr><td>id <span class="pill pk">PK</span></td><td>uuid</td><td class="desc"></td></tr>
+            <tr><td>meta_template_name</td><td>text</td><td class="desc">espejo del nombre en Meta Business Manager</td></tr>
+            <tr><td>language_code</td><td>text</td><td class="desc">ej. es_CO</td></tr>
+            <tr><td>category</td><td>enum</td><td class="desc">utility · marketing · authentication</td></tr>
+            <tr><td>approval_status</td><td>enum</td><td class="desc">espejo del estado de aprobación de Meta</td></tr>
+            <tr><td>variables_schema</td><td>jsonb</td><td class="desc">nombres/orden de las variables de la plantilla</td></tr>
+          </table>
+        </div>
+      </section>
+
+      <section id="roadmap">
+        <div class="sec-head"><span class="sec-num">§4</span><h2>Guía de desarrollo por fases</h2></div>
+        <p>Ocho fases, cada una entregable de forma independiente. El orden importa: la integración de WhatsApp (fase 4) depende de tener verificado el número de negocio en Meta desde la fase 0, porque esa verificación puede tardar varios días hábiles.</p>
+
+        <div class="phase">
+          <div class="phase-num">0</div>
+          <div>
+            <h4>Fundamentos y cuentas externas</h4>
+            <p class="goal">Todo lo que tiene tiempos de espera de terceros arranca aquí, no cuando ya se necesita.</p>
+            <ul>
+              <li>Repositorios (móvil / backend), estándares de linting y commits</li>
+              <li>Alta en Meta Business Manager + verificación del número de WhatsApp (puede tardar 3–5 días hábiles)</li>
+              <li>Proyecto en Firebase (FCM) y credenciales de servicio</li>
+              <li>Entornos: local, staging, producción; gestor de secretos</li>
+            </ul>
+            <div class="badge-row"><span class="badge">bloqueante para §4</span></div>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-num">1</div>
+          <div>
+            <h4>Backend núcleo: datos y autenticación</h4>
+            <p class="goal">El esquema de la §3 tomando forma real, con auth funcionando end-to-end.</p>
+            <ul>
+              <li>Modelos SQLAlchemy + migraciones con Alembic</li>
+              <li>Auth JWT (access + refresh token), manejo de <code>timezone</code> por usuario</li>
+              <li>CRUD de <code>activities</code> y <code>contacts</code>, validación con Pydantic</li>
+              <li>Documentación automática vía OpenAPI (gratis con FastAPI)</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-num">2</div>
+          <div>
+            <h4>Frontend núcleo: calendario</h4>
+            <p class="goal">Vistas día/semana/mes contra la API real, no contra datos falsos.</p>
+            <ul>
+              <li>Esqueleto Flutter, Riverpod, cliente HTTP con manejo de refresh token</li>
+              <li>Vistas de calendario (día/semana/mes) con CRUD de actividades</li>
+              <li>Pantalla de "pendientes por programar" para actividades sin fecha</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-num">3</div>
+          <div>
+            <h4>Notificaciones push</h4>
+            <p class="goal">El recordatorio llega al dispositivo antes de tocar WhatsApp.</p>
+            <ul>
+              <li>Registro de <code>devices</code> (token FCM) al iniciar sesión</li>
+              <li>Celery + Redis: Beat evalúa <code>reminders</code> cada 60s, workers envían</li>
+              <li>Deep-link desde la notificación al detalle de la actividad</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-num">4</div>
+          <div>
+            <h4>Integración WhatsApp Business</h4>
+            <p class="goal">Confirmaciones y recordatorios automáticos por WhatsApp.</p>
+            <ul>
+              <li>Plantillas aprobadas en Meta (confirmación, reprogramación, recordatorio)</li>
+              <li>Endpoint de envío vía Cloud API + manejo de la ventana de 24h de conversación</li>
+              <li>Webhook de estados (enviado/entregado/leído/fallido) y de respuestas entrantes</li>
+            </ul>
+            <div class="badge-row"><span class="badge">depende de §fase 0</span></div>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-num">5</div>
+          <div>
+            <h4>Alertas de pendientes sin programar</h4>
+            <p class="goal">La funcionalidad menos obvia de la propuesta original — actividades sin fecha que igual necesitan seguimiento.</p>
+            <ul>
+              <li>Job diario que agrupa <code>activities</code> con <code>starts_at IS NULL</code> por usuario</li>
+              <li>Notificación resumen ("tienes N actividades sin programar")</li>
+              <li>Bandeja dedicada en el frontend, separada del calendario</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-num">6</div>
+          <div>
+            <h4>Calidad y seguridad</h4>
+            <p class="goal">Antes de producción, no después de un incidente.</p>
+            <ul>
+              <li>Rate limiting en auth y en endpoints de envío</li>
+              <li>Pruebas unitarias e integración (pytest), pruebas de carga sobre el scheduler</li>
+              <li>Verificación de firma de webhooks de Meta (<code>X-Hub-Signature-256</code>)</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="phase">
+          <div class="phase-num">7</div>
+          <div>
+            <h4>Despliegue y observabilidad</h4>
+            <p class="goal">Ir a producción con visibilidad, no a ciegas.</p>
+            <ul>
+              <li>Contenedores Docker, migraciones automatizadas en CI/CD</li>
+              <li>Publicación en App Store / Google Play</li>
+              <li>Logs estructurados, métricas de entrega de notificaciones, alertas de fallos en la cola</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section id="seguridad">
+        <div class="sec-head"><span class="sec-num">§5</span><h2>Seguridad y cumplimiento</h2></div>
+        <ul>
+          <li><b>Datos personales:</b> el correo <code>@clinicacampbell.com.co</code> sugiere que esto puede terminar gestionando datos de pacientes. Si es así, el tratamiento de nombres y teléfonos en <code>contacts</code> cae bajo la <b>Ley 1581 de 2012 (Habeas Data)</b> en Colombia — se necesita autorización expresa del titular para contactarlo por WhatsApp, y un aviso de privacidad accesible desde la app.</li>
+          <li><b>Plantillas de WhatsApp:</b> Meta exige que las plantillas de categoría <i>utility</i> (confirmaciones, recordatorios) no incluyan contenido promocional; revisa la política de mensajería de salud de Meta si se usan para citas médicas.</li>
+          <li><b>Secretos:</b> tokens de Meta, credenciales de Firebase Admin y claves de firma JWT van en un gestor de secretos (no en variables de entorno planas en el repo).</li>
+          <li><b>Tiempo:</b> guarda siempre en UTC (<code>timestamptz</code>) y convierte solo en la capa de presentación, usando el <code>timezone</code> del usuario — nunca conviertas antes de persistir.</li>
+        </ul>
+      </section>
+
+      <section id="endpoints">
+        <div class="sec-head"><span class="sec-num">§6</span><h2>Endpoints de la API — Fase 1</h2></div>
+        <p>Alcance de la fase 1: autenticación, <code>activities</code> y <code>contacts</code>. Los endpoints de <code>devices</code> (fase 3) y de envío de WhatsApp (fase 4) se documentan aparte porque dependen de infraestructura que aún no existe en esta fase.</p>
+
+        <div class="callout">
+          <span class="label">Convenciones</span>
+          Base <code>/api/v1</code>. Fechas en JSON siempre ISO 8601 UTC (<code>2026-07-14T20:00:00Z</code>) — el cliente convierte a la zona horaria local solo para mostrar. Errores con el mismo sobre: <code>{"error": {"code": "...", "message": "..."}}</code>. Todo endpoint salvo <code>/auth/*</code> requiere <code>Authorization: Bearer &lt;access_token&gt;</code>.
+        </div>
+
+        <h3>Autenticación</h3>
+
+        <details class="endpoint">
+          <summary><span class="method post">POST</span><span class="path">/auth/register</span><span class="desc-inline">crea usuario y sesión</span></summary>
+          <div class="body">
+            <p>Body: <code>full_name, email, password, phone_e164, timezone</code>. El backend valida que <code>timezone</code> sea un identificador IANA real antes de guardar — un valor inválido rompe todo el cálculo de recordatorios más adelante.</p>
+            <pre class="code">201 Created
+<span class="k">{</span>
+  "user": <span class="k">{ "id": "...", "full_name": "...", "timezone": "America/Bogota" }</span>,
+  "access_token": <span class="s">"eyJ..."</span>,
+  "refresh_token": <span class="s">"eyJ..."</span>
+<span class="k">}</span></pre>
+          </div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method post">POST</span><span class="path">/auth/login</span><span class="desc-inline">email + password</span></summary>
+          <div class="body">
+            <p>Devuelve <code>access_token</code> (vigencia 15 min) y <code>refresh_token</code> (vigencia 30 días, guardado en Redis con posibilidad de revocación individual).</p>
+          </div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method post">POST</span><span class="path">/auth/refresh</span><span class="desc-inline">renueva access_token</span></summary>
+          <div class="body"><p>Body: <code>refresh_token</code>. Si fue revocado (logout, o token robado reportado), responde 401 y el cliente fuerza login.</p></div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method post">POST</span><span class="path">/auth/logout</span><span class="desc-inline">revoca el refresh_token actual</span></summary>
+          <div class="body"><p>Lo agrega a una blacklist en Redis hasta su expiración natural.</p></div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method get">GET</span><span class="path">/auth/me</span><span class="desc-inline">perfil autenticado</span></summary>
+          <div class="body"><p>Usado por Flutter al abrir la app para hidratar el estado de sesión sin pedir credenciales de nuevo.</p></div>
+        </details>
+
+        <h3>Activities</h3>
+
+        <details class="endpoint" open>
+          <summary><span class="method post">POST</span><span class="path">/activities</span><span class="desc-inline">crea reunión, cita, tarea o actividad</span></summary>
+          <div class="body">
+            <p>Si <code>starts_at</code> viene <code>null</code>, el backend fuerza <code>status = "unscheduled"</code> sin importar lo que envíe el cliente. Si viene con fecha, el servicio genera automáticamente los <code>reminders</code> según las preferencias por defecto del usuario (ej. 1 día antes + 1 hora antes) — esto es lógica interna de la fase 1; el scheduler que los consume llega en la fase 3.</p>
+            <pre class="code"><span class="k">{</span>
+  "type": <span class="s">"appointment"</span>,
+  "title": <span class="s">"Control - María Fernanda Ríos"</span>,
+  "contact_id": <span class="s">"c1a2..."</span>,
+  "starts_at": <span class="s">"2026-07-14T20:00:00Z"</span>,
+  "ends_at": <span class="s">"2026-07-14T20:30:00Z"</span>,
+  "location": <span class="s">"Consultorio 3"</span>
+<span class="k">}</span></pre>
+          </div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method get">GET</span><span class="path">/activities?from=&to=&type=&status=&page=&limit=</span><span class="desc-inline">listado para el calendario</span></summary>
+          <div class="body">
+            <p><code>from</code>/<code>to</code> alimentan directamente las vistas día/semana/mes — Flutter pide solo el rango visible, no todo el histórico. <code>type</code> y <code>status</code> filtran (ej. solo <code>task</code> pendientes).</p>
+            <pre class="code">200 OK
+<span class="k">{</span>
+  "items": [ <span class="k">{ "id": "...", "type": "appointment", "starts_at": "2026-07-14T20:00:00Z", ... }</span> ],
+  "page": 1, "limit": 50, "total": 132
+<span class="k">}</span></pre>
+          </div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method get">GET</span><span class="path">/activities/unscheduled</span><span class="desc-inline">bandeja de pendientes por programar</span></summary>
+          <div class="body"><p>Atajo equivalente a <code>status=unscheduled</code> sin rango de fecha — alimenta la pantalla de backlog de la §2 y, en la fase 5, el resumen periódico.</p></div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method get">GET</span><span class="path">/activities/{id}</span><span class="desc-inline">detalle</span></summary>
+          <div class="body"><p>Incluye los <code>reminders</code> asociados embebidos, para que la pantalla de detalle no dispare una segunda llamada.</p></div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method patch">PATCH</span><span class="path">/activities/{id}</span><span class="desc-inline">actualización parcial / reprogramar</span></summary>
+          <div class="body"><p>Cambiar <code>starts_at</code> (reprogramar) elimina los <code>reminders</code> pendientes anteriores y genera unos nuevos — evita que llegue un recordatorio con la hora vieja. Si además el <code>status</code> pasa a <code>completed</code> o <code>cancelled</code>, cualquier recordatorio pendiente se cancela sin enviarse.</p></div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method delete">DELETE</span><span class="path">/activities/{id}</span><span class="desc-inline">soft delete</span></summary>
+          <div class="body"><p>Marca <code>status = "cancelled"</code> en vez de borrar la fila — así <code>notification_log</code> conserva la referencia de cualquier WhatsApp ya enviado sobre esa actividad.</p></div>
+        </details>
+
+        <h3>Contacts</h3>
+
+        <details class="endpoint">
+          <summary><span class="method post">POST</span><span class="path">/contacts</span><span class="desc-inline">registra un destinatario de WhatsApp</span></summary>
+          <div class="body"><p>Body: <code>full_name, phone_e164, notes</code>. <code>phone_e164</code> se valida con formato internacional (<code>+57...</code>) porque es el mismo valor que viaja tal cual al campo <code>to</code> de la Cloud API en la fase 4.</p></div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method get">GET</span><span class="path">/contacts?search=</span><span class="desc-inline">listado / búsqueda por nombre</span></summary>
+          <div class="body"></div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method get">GET</span><span class="path">/contacts/{id}</span><span class="desc-inline">detalle</span></summary>
+          <div class="body"></div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method patch">PATCH</span><span class="path">/contacts/{id}</span><span class="desc-inline">edición</span></summary>
+          <div class="body"></div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method delete">DELETE</span><span class="path">/contacts/{id}</span><span class="desc-inline">elimina si no tiene actividades asociadas</span></summary>
+          <div class="body"><p>Si tiene <code>activities</code> vinculadas, responde 409 — obliga a reasignar o cancelar esas actividades primero, para no dejar huérfanos los mensajes ya registrados en <code>notification_log</code>.</p></div>
+        </details>
+      </section>
+
+      <section id="whatsapp">
+        <div class="sec-head"><span class="sec-num">§7</span><h2>Plantillas de WhatsApp</h2></div>
+        <p>Meta no permite enviar texto libre para iniciar una conversación. Todo mensaje que abre o reabre el hilo con un contacto debe usar una <b>plantilla pre-aprobada</b> — de ahí la tabla <code>whatsapp_templates</code> de la §3, que es un espejo local del estado real en Meta Business Manager.</p>
+
+        <h3>Ciclo de vida de una plantilla</h3>
+        <div class="flow-strip">
+          <div class="flow-step">Se crea en Business Manager<span class="tag">nombre + idioma + variables</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step pending">Meta revisa<span class="tag">pending · horas a días</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step done">Aprobada o rechazada<span class="tag">approval_status</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">Se espeja en la BD<span class="tag">whatsapp_templates</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step done">Celery la usa para enviar<span class="tag">fase 4</span></div>
+        </div>
+        <p>Por eso la fase 0 incluye dar de alta el número de WhatsApp con tiempo: sin plantillas aprobadas, la fase 4 no tiene nada que enviar.</p>
+
+        <h3>Las tres plantillas que necesita OmniTask</h3>
+
+        <div class="tmpl-card">
+          <h4>appointment_confirmation <span style="font-weight:400; color:var(--muted); font-family:var(--font-mono); font-size:12px;">· utility · es_CO</span></h4>
+          <p class="body-text">"Hola {{1}}, tu cita en Clínica Campbell quedó agendada para el {{2}} a las {{3}}. Si necesitas reprogramar, responde este mensaje."</p>
+          <div class="vars">{{1}} nombre del contacto · {{2}} fecha · {{3}} hora</div>
+        </div>
+
+        <div class="tmpl-card">
+          <h4>appointment_reminder <span style="font-weight:400; color:var(--muted); font-family:var(--font-mono); font-size:12px;">· utility · es_CO</span></h4>
+          <p class="body-text">"Hola {{1}}, te recordamos tu cita el {{2}} a las {{3}} en Clínica Campbell."</p>
+          <div class="vars">{{1}} nombre del contacto · {{2}} fecha · {{3}} hora</div>
+        </div>
+
+        <div class="tmpl-card">
+          <h4>appointment_reschedule <span style="font-weight:400; color:var(--muted); font-family:var(--font-mono); font-size:12px;">· utility · es_CO</span></h4>
+          <p class="body-text">"Hola {{1}}, tu cita fue reprogramada. Nueva fecha: {{2}} a las {{3}}."</p>
+          <div class="vars">{{1}} nombre del contacto · {{2}} fecha · {{3}} hora</div>
+        </div>
+
+        <p>Categoría <code>utility</code> porque son transaccionales, no promocionales — es lo que Meta exige para este tipo de mensaje y evita que se traten con las restricciones (y costos) de plantillas de marketing.</p>
+
+        <h3>Envío: del worker de Celery a la Cloud API</h3>
+        <p>Este endpoint no lo llama Flutter — lo dispara internamente el worker que procesa <code>reminders</code> vencidos.</p>
+        <pre class="code"><span class="k">POST</span> https://graph.facebook.com/v20.0/{phone_number_id}/messages
+<span class="k">{</span>
+  "messaging_product": <span class="s">"whatsapp"</span>,
+  "to": <span class="s">"573001234567"</span>,
+  "type": <span class="s">"template"</span>,
+  "template": <span class="k">{</span>
+    "name": <span class="s">"appointment_reminder"</span>,
+    "language": <span class="k">{ "code": "es_CO" }</span>,
+    "components": [<span class="k">{</span>
+      "type": <span class="s">"body"</span>,
+      "parameters": [
+        <span class="k">{ "type": "text", "text": "María" }</span>,
+        <span class="k">{ "type": "text", "text": "14 de julio" }</span>,
+        <span class="k">{ "type": "text", "text": "3:00 p.m." }</span>
+      ]
+    <span class="k">}</span>]
+  <span class="k">}</span>
+<span class="k">}</span></pre>
+        <p>La respuesta trae un <code>wamid</code> (message id de Meta) que se guarda en <code>notification_log.provider_message_id</code> para poder cruzarlo después con el webhook de estado.</p>
+
+        <h3>Webhook: verificación, firma y estados</h3>
+        <p>Meta llama de vuelta a un único endpoint público, <code>/webhooks/whatsapp</code>, para tres cosas distintas:</p>
+        <ul>
+          <li><b>Verificación (una sola vez, al configurar):</b> Meta hace <code>GET</code> con <code>hub.mode</code>, <code>hub.verify_token</code> y <code>hub.challenge</code>; el backend responde el <code>challenge</code> tal cual si el token coincide con el configurado.</li>
+          <li><b>Estados de entrega:</b> cada <code>POST</code> trae un arreglo <code>statuses</code> con <code>id</code> (el <code>wamid</code>), <code>status</code> (<code>sent</code> · <code>delivered</code> · <code>read</code> · <code>failed</code>) y <code>timestamp</code> — el backend hace match por <code>provider_message_id</code> y actualiza <code>notification_log</code>.</li>
+          <li><b>Mensajes entrantes:</b> si el contacto responde (ej. "no puedo, reprograma"), llega como mensaje inbound — se registra en <code>notification_log</code> y, en esta fase, simplemente notifica al usuario dueño de la actividad para que responda manualmente; no hay bot conversacional en el alcance actual.</li>
+        </ul>
+        <div class="callout alt">
+          <span class="label">No omitir</span>
+          Todo <code>POST</code> a este webhook debe validarse con el header <code>X-Hub-Signature-256</code> (HMAC-SHA256 del cuerpo crudo con el app secret) antes de procesarlo. Sin esta validación, cualquiera que adivine la URL puede inyectar estados de entrega falsos.
+        </div>
+
+        <h3>La ventana de 24 horas</h3>
+        <p>Si el contacto escribió por su cuenta en las últimas 24 horas, el backend puede responder con texto libre. Fuera de esa ventana — que es el caso normal para confirmaciones y recordatorios que <i>inician</i> la conversación — el mensaje tiene que ser una plantilla aprobada. El worker no necesita decidir esto dinámicamente en la fase 4: como los tres flujos de OmniTask siempre inician la conversación, todo se envía como plantilla por defecto.</p>
+      </section>
+
+      <section id="fase3">
+        <div class="sec-head"><span class="sec-num">§8</span><h2>Fase 3 — Devices y scheduler de recordatorios</h2></div>
+        <p>Dos piezas nuevas: <code>devices</code> guarda el token FCM de cada instalación de la app, y un par de tareas de Celery Beat convierten filas de <code>reminders</code> en notificaciones reales. Un detalle de concurrencia importa aquí más que en cualquier otra fase: si dos workers levantan el mismo recordatorio vencido, el usuario recibe el mismo aviso duplicado — o peor, paga dos veces el mismo mensaje de WhatsApp cuando llegue la fase 4.</p>
+
+        <h3>Endpoints de devices</h3>
+
+        <details class="endpoint">
+          <summary><span class="method post">POST</span><span class="path">/devices</span><span class="desc-inline">registra o reasigna un token FCM</span></summary>
+          <div class="body"><p>Body: <code>fcm_token, platform</code>. Es un upsert por <code>fcm_token</code> (no por usuario): si el mismo dispositivo se reinstala o cambia de cuenta, el token se reasigna al usuario que acaba de iniciar sesión y se actualiza <code>last_seen_at</code>, en vez de crear una fila duplicada.</p></div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method get">GET</span><span class="path">/devices</span><span class="desc-inline">dispositivos activos de la cuenta</span></summary>
+          <div class="body"><p>Alimenta una pantalla simple de "sesiones activas" — útil para que un usuario detecte un dispositivo que ya no reconoce.</p></div>
+        </details>
+
+        <details class="endpoint">
+          <summary><span class="method delete">DELETE</span><span class="path">/devices/{id}</span><span class="desc-inline">cierra sesión de push en ese dispositivo</span></summary>
+          <div class="body"><p>Borra la fila; ese token deja de recibir push de inmediato. También se limpia automáticamente cuando Firebase responde <code>UnregisteredError</code> al intentar enviar (token vencido o app desinstalada).</p></div>
+        </details>
+
+        <h3>Modelo de devices</h3>
+        <pre class="code">class Device(Base):
+    __tablename__ = "devices"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    fcm_token: Mapped[str] = mapped_column(unique=True, index=True)
+    platform: Mapped[str] = mapped_column(Enum("ios", "android", name="device_platform"))
+    last_seen_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="devices")</pre>
+
+        <div class="callout alt">
+          <span class="label">Addendum a §3</span>
+          El enum <code>status</code> de <code>reminders</code> gana un cuarto valor: <code>pending · processing · sent · failed</code>. <code>processing</code> es lo que evita el doble envío — se explica abajo.
+        </div>
+
+        <h3>El scheduler: dos tareas de Celery Beat</h3>
+        <pre class="code"># celeryconfig.py
+beat_schedule = {
+    "dispatch-due-reminders": {
+        "task": "app.tasks.dispatch_due_reminders",
+        "schedule": 60.0,
+    },
+    "dispatch-unscheduled-digest": {
+        "task": "app.tasks.dispatch_unscheduled_digest",
+        "schedule": crontab(hour=8, minute=0),
+    },
+}</pre>
+        <p>La segunda tarea es el resumen diario de actividades sin fecha de la fase 5 — se agenda desde ya porque comparte la misma infraestructura de Beat.</p>
+
+        <h3>Reclamar recordatorios vencidos sin duplicar envíos</h3>
+        <p>El paso crítico es <code>SELECT ... FOR UPDATE SKIP LOCKED</code>: bloquea las filas que toma un worker para que otro worker (u otra ejecución solapada de la misma tarea) simplemente las salte en vez de esperarlas y reprocesarlas.</p>
+        <pre class="code">@celery_app.task
+def dispatch_due_reminders():
+    with SessionLocal() as db:
+        due = db.execute(
+            select(Reminder)
+            .where(Reminder.remind_at &lt;= func.now(), Reminder.status == "pending")
+            .with_for_update(skip_locked=True)
+            .limit(200)
+        ).scalars().all()
+
+        ids = [r.id for r in due]
+        for r in due:
+            r.status = "processing"
+        db.commit()
+
+    for reminder_id in ids:
+        send_reminder.delay(str(reminder_id))</pre>
+
+        <p>La tarea por recordatorio hace el envío real y decide el canal. La rama de WhatsApp queda protegida por un feature flag hasta que la fase 4 esté desplegada — así la fase 3 se puede entregar y probar en producción sin depender de que Meta ya haya aprobado las plantillas.</p>
+        <pre class="code">@celery_app.task(autoretry_for=(Exception,), retry_backoff=True, max_retries=5)
+def send_reminder(reminder_id: str):
+    with SessionLocal() as db:
+        reminder = db.get(Reminder, reminder_id)
+        activity = reminder.activity
+
+        if reminder.channel in ("push", "both"):
+            _send_push(db, activity)
+
+        if reminder.channel in ("whatsapp", "both"):
+            if settings.WHATSAPP_ENABLED:
+                _send_whatsapp(activity.contact, activity, reminder.template_id)
+            else:
+                _log_deferred(db, reminder, reason="whatsapp_not_yet_live")
+
+        reminder.status = "sent"
+        reminder.sent_at = func.now()
+        db.commit()
+
+
+def _send_push(db, activity):
+    for device in activity.user.devices:
+        try:
+            messaging.send(messaging.Message(
+                notification=messaging.Notification(
+                    title="Recordatorio",
+                    body=f"{activity.title} - {activity.starts_at:%H:%M}",
+                ),
+                data={"activity_id": str(activity.id), "type": "reminder"},
+                token=device.fcm_token,
+            ))
+        except messaging.UnregisteredError:
+            db.delete(device)</pre>
+        <p>Si <code>send_reminder</code> agota los 5 reintentos (backoff exponencial de Celery), el recordatorio queda en <code>processing</code> indefinidamente sin esta salvaguarda — por eso conviene un <code>on_failure</code> explícito que lo marque <code>failed</code> y escriba el detalle en <code>notification_log</code> en vez de dejarlo colgado.</p>
+      </section>
+
+      <section id="modelos">
+        <div class="sec-head"><span class="sec-num">§9</span><h2>Modelos concretos — Fase 1</h2></div>
+        <p>SQLAlchemy 2.0 (estilo <code>Mapped</code>) para persistencia, Pydantic v2 para los esquemas de entrada/salida de la API. Solo las cuatro tablas que toca la fase 1: <code>users</code>, <code>contacts</code>, <code>activities</code> y <code>reminders</code> (esta última se escribe pero aún no se procesa — eso llega en la §8).</p>
+
+        <h3>SQLAlchemy</h3>
+        <pre class="code">class Base(DeclarativeBase):
+    pass
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    full_name: Mapped[str]
+    email: Mapped[str] = mapped_column(unique=True, index=True)
+    password_hash: Mapped[str]
+    phone_e164: Mapped[str]
+    timezone: Mapped[str]
+    role: Mapped[str] = mapped_column(
+        Enum("admin", "professional", "assistant", name="user_role"),
+        default="professional",
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    contacts: Mapped[list["Contact"]] = relationship(back_populates="owner")
+    activities: Mapped[list["Activity"]] = relationship(back_populates="user")
+    devices: Mapped[list["Device"]] = relationship(back_populates="user")
+
+
+class Contact(Base):
+    __tablename__ = "contacts"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    full_name: Mapped[str]
+    phone_e164: Mapped[str]
+    notes: Mapped[str | None]
+
+    owner: Mapped["User"] = relationship(back_populates="contacts")
+    activities: Mapped[list["Activity"]] = relationship(back_populates="contact")
+
+
+class Activity(Base):
+    __tablename__ = "activities"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("contacts.id"), index=True)
+    type: Mapped[str] = mapped_column(
+        Enum("meeting", "appointment", "task", "activity", name="activity_type")
+    )
+    title: Mapped[str]
+    description: Mapped[str | None]
+    status: Mapped[str] = mapped_column(
+        Enum("unscheduled", "scheduled", "completed", "cancelled", name="activity_status"),
+        default="scheduled",
+    )
+    starts_at: Mapped[datetime | None] = mapped_column(index=True)
+    ends_at: Mapped[datetime | None]
+    timezone: Mapped[str]
+    location: Mapped[str | None]
+    nudge_frequency_days: Mapped[int | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="activities")
+    contact: Mapped["Contact | None"] = relationship(back_populates="activities")
+    reminders: Mapped[list["Reminder"]] = relationship(
+        back_populates="activity", cascade="all, delete-orphan"
+    )
+
+
+class Reminder(Base):
+    __tablename__ = "reminders"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    activity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("activities.id"), index=True)
+    remind_at: Mapped[datetime] = mapped_column(index=True)
+    channel: Mapped[str] = mapped_column(Enum("push", "whatsapp", "both", name="reminder_channel"))
+    template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("whatsapp_templates.id"))
+    status: Mapped[str] = mapped_column(
+        Enum("pending", "processing", "sent", "failed", name="reminder_status"),
+        default="pending",
+    )
+    sent_at: Mapped[datetime | None]
+
+    activity: Mapped["Activity"] = relationship(back_populates="reminders")</pre>
+
+        <h3>Pydantic — esquemas de Activity</h3>
+        <p>Estos son los que más lógica de validación cargan, porque <code>starts_at</code> nulo es un estado de primera clase, no una omisión.</p>
+        <pre class="code">class ActivityBase(BaseModel):
+    type: Literal["meeting", "appointment", "task", "activity"]
+    title: str
+    description: str | None = None
+    contact_id: uuid.UUID | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    location: str | None = None
+    nudge_frequency_days: int | None = None
+
+
+class ActivityCreate(ActivityBase):
+    @field_validator("ends_at")
+    @classmethod
+    def ends_after_starts(cls, v: datetime | None, info: ValidationInfo) -> datetime | None:
+        starts = info.data.get("starts_at")
+        if v and starts and v &lt;= starts:
+            raise ValueError("ends_at debe ser posterior a starts_at")
+        return v
+
+
+class ActivityUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    status: Literal["unscheduled", "scheduled", "completed", "cancelled"] | None = None
+    location: str | None = None
+
+
+class ActivityRead(ActivityBase):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    status: Literal["unscheduled", "scheduled", "completed", "cancelled"]
+    timezone: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)</pre>
+        <p>La regla que fuerza <code>status = "unscheduled"</code> cuando <code>starts_at</code> es <code>None</code> vive en el service layer (no en el schema): el schema solo valida forma, la decisión de negocio queda en un solo lugar junto con la generación automática de <code>reminders</code> descrita en la §6.</p>
+      </section>
+
+      <section id="auth">
+        <div class="sec-head"><span class="sec-num">§10</span><h2>Servicio de auth: hashing, JWT y refresh</h2></div>
+        <p>Tres decisiones concretas que no se ven en los endpoints de la §6: <b>argon2</b> en vez de bcrypt para el hash, <b>refresh tokens de un solo uso</b> (rotación) en vez de reutilizables, y un <code>jti</code> por token que vive en Redis para poder revocar antes de que expire por sí solo.</p>
+
+        <h3>Hashing de contraseñas</h3>
+        <p>Argon2 no tiene el límite de 72 bytes de bcrypt y es la recomendación actual de OWASP para contraseñas nuevas — sin ventaja real de quedarse con bcrypt en un proyecto que arranca hoy.</p>
+        <pre class="code"># core/security.py
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return pwd_context.verify(password, password_hash)</pre>
+
+        <h3>Emitir tokens</h3>
+        <p>Cada token lleva <code>type</code> (para que un refresh token no pueda usarse donde se espera un access token) y <code>jti</code> (identificador único, la pieza que permite revocar).</p>
+        <pre class="code">ACCESS_TOKEN_TTL = timedelta(minutes=15)
+REFRESH_TOKEN_TTL = timedelta(days=30)
+
+def _create_token(user_id: uuid.UUID, token_type: str, ttl: timedelta) -> tuple[str, str]:
+    jti = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user_id),
+        "type": token_type,
+        "jti": jti,
+        "iat": now,
+        "exp": now + ttl,
+    }
+    token = jwt.encode(payload, settings.JWT_SECRET, algorithm="HS256")
+    return token, jti
+
+def create_access_token(user_id: uuid.UUID) -> str:
+    token, _ = _create_token(user_id, "access", ACCESS_TOKEN_TTL)
+    return token
+
+def create_refresh_token(user_id: uuid.UUID) -> tuple[str, str]:
+    return _create_token(user_id, "refresh", REFRESH_TOKEN_TTL)</pre>
+
+        <h3>Por qué el refresh token vive también en Redis</h3>
+        <p>El JWT por sí solo es válido hasta su <code>exp</code> aunque el usuario cierre sesión — no hay forma de "borrarlo" del lado del cliente de forma confiable. Guardar el <code>jti</code> en Redis con el mismo TTL da un punto de revocación real: <code>logout</code> borra la llave, y a partir de ahí el token deja de servir aunque su firma siga siendo válida.</p>
+        <pre class="code"># core/redis.py
+def store_refresh_jti(user_id: uuid.UUID, jti: str, ttl: timedelta) -> None:
+    redis.set(f"refresh:{jti}", str(user_id), ex=int(ttl.total_seconds()))
+
+def is_refresh_valid(jti: str) -> bool:
+    return redis.exists(f"refresh:{jti}") == 1
+
+def revoke_refresh(jti: str) -> None:
+    redis.delete(f"refresh:{jti}")</pre>
+
+        <h3>Login, refresh con rotación y logout</h3>
+        <p>Cada <code>/auth/refresh</code> exitoso revoca el refresh token que se acaba de usar y emite uno nuevo. Un refresh token nunca se reutiliza — si alguien lo intenta usar dos veces (por ejemplo, uno robado que el atacante reutiliza después de que el usuario legítimo ya refrescó), la segunda llamada ya no lo encuentra en Redis y falla.</p>
+        <pre class="code">@router.post("/auth/login", response_model=TokenPair)
+def login(payload: LoginRequest, db: Session = Depends(get_db)):
+    user = db.scalar(select(User).where(User.email == payload.email))
+    if not user or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(401, detail="Credenciales inválidas")
+
+    access_token = create_access_token(user.id)
+    refresh_token, refresh_jti = create_refresh_token(user.id)
+    store_refresh_jti(user.id, refresh_jti, REFRESH_TOKEN_TTL)
+    return TokenPair(access_token=access_token, refresh_token=refresh_token)
+
+
+@router.post("/auth/refresh", response_model=TokenPair)
+def refresh(payload: RefreshRequest):
+    try:
+        claims = jwt.decode(payload.refresh_token, settings.JWT_SECRET, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise HTTPException(401, detail="Token inválido")
+
+    if claims["type"] != "refresh" or not is_refresh_valid(claims["jti"]):
+        raise HTTPException(401, detail="Sesión expirada, inicia sesión de nuevo")
+
+    revoke_refresh(claims["jti"])  # de un solo uso: revocar antes de emitir el reemplazo
+
+    user_id = uuid.UUID(claims["sub"])
+    access_token = create_access_token(user_id)
+    new_refresh_token, new_jti = create_refresh_token(user_id)
+    store_refresh_jti(user_id, new_jti, REFRESH_TOKEN_TTL)
+    return TokenPair(access_token=access_token, refresh_token=new_refresh_token)
+
+
+@router.post("/auth/logout")
+def logout(payload: RefreshRequest):
+    claims = jwt.decode(payload.refresh_token, settings.JWT_SECRET, algorithms=["HS256"])
+    revoke_refresh(claims["jti"])
+    return {"detail": "Sesión cerrada"}</pre>
+
+        <h3>Dependencia para rutas protegidas</h3>
+        <pre class="code"># deps.py
+bearer_scheme = HTTPBearer()
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    try:
+        claims = jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise HTTPException(401, detail="Token inválido o expirado")
+
+    if claims.get("type") != "access":
+        raise HTTPException(401, detail="Se requiere un access token")
+
+    user = db.get(User, uuid.UUID(claims["sub"]))
+    if user is None:
+        raise HTTPException(401, detail="Usuario no encontrado")
+    return user</pre>
+        <p>Cada router de la §6 (<code>activities</code>, <code>contacts</code>, <code>devices</code>) declara <code>user: User = Depends(get_current_user)</code> y filtra siempre por <code>user.id</code> — nunca por un <code>user_id</code> que venga en el body o en la URL, para que un usuario no pueda leer ni modificar datos de otro simplemente cambiando un id.</p>
+
+        <div class="callout">
+          <span class="label">Endurecimiento opcional, no bloqueante</span>
+          Si <code>is_refresh_valid</code> falla pero el <code>jti</code> corresponde a un token ya usado (no solo expirado), es señal de un posible robo de token — vale la pena, más adelante, revocar todas las sesiones del usuario en ese caso en vez de solo rechazar la llamada. No es necesario para el lanzamiento inicial.
+        </div>
+      </section>
+
+      <section id="estructura">
+        <div class="sec-head"><span class="sec-num">§11</span><h2>Estructura del proyecto FastAPI</h2></div>
+        <p>La idea central: los routers son delgados y solo orquestan; toda la lógica de negocio (generar <code>reminders</code> al crear una actividad, decidir el canal de un recordatorio) vive en <code>services/</code> — así el mismo código lo usan tanto un endpoint HTTP como una tarea de Celery, sin reescribirlo dos veces.</p>
+
+        <pre class="code">backend/
+├── app/
+│   ├── main.py                    # crea la app, monta routers, CORS, eventos de startup
+│   ├── config.py                  # Settings (pydantic-settings) desde variables de entorno
+│   ├── database.py                # engine, SessionLocal, dependencia get_db
+│   │
+│   ├── models/                    # SQLAlchemy — un archivo por tabla
+│   │   ├── user.py
+│   │   ├── contact.py
+│   │   ├── activity.py
+│   │   ├── reminder.py
+│   │   ├── device.py
+│   │   └── whatsapp_template.py
+│   │
+│   ├── schemas/                   # Pydantic — espejo de models/, nunca se importa desde ahí
+│   │   ├── auth.py                 # LoginRequest, RefreshRequest, TokenPair
+│   │   ├── activity.py
+│   │   ├── contact.py
+│   │   └── device.py
+│   │
+│   ├── api/v1/
+│   │   ├── router.py               # agrupa los sub-routers bajo /api/v1
+│   │   ├── auth.py
+│   │   ├── activities.py
+│   │   ├── contacts.py
+│   │   └── devices.py
+│   │
+│   ├── services/                   # lógica de negocio — la reutilizan API y Celery por igual
+│   │   ├── auth_service.py          # hash, verify, create/rotate tokens
+│   │   ├── activity_service.py      # crea/regenera reminders al crear o reprogramar
+│   │   └── notification_service.py  # arma y envía push / whatsapp, escribe notification_log
+│   │
+│   ├── tasks/                      # Celery — llaman a services/, no reimplementan lógica
+│   │   ├── celery_app.py
+│   │   ├── reminders.py             # dispatch_due_reminders, send_reminder
+│   │   └── digest.py                # dispatch_unscheduled_digest (fase 5)
+│   │
+│   ├── core/
+│   │   ├── security.py              # hash_password, create_access_token, etc.
+│   │   └── redis.py                 # cliente redis + store/is_valid/revoke de refresh
+│   │
+│   └── deps.py                     # get_current_user, paginación común
+│
+├── alembic/
+│   ├── versions/
+│   └── env.py
+│
+├── tests/
+│   ├── conftest.py                 # DB de test, fixtures de usuario autenticado
+│   ├── test_auth.py
+│   └── test_activities.py
+│
+├── alembic.ini
+├── pyproject.toml
+└── docker-compose.yml              # postgres · redis · api · celery worker · celery beat</pre>
+
+        <p>Tres reglas que mantienen esto ordenado a medida que crece:</p>
+        <ul>
+          <li><b>Los routers no tocan SQLAlchemy directamente</b> más allá de una consulta simple de lectura; cualquier escritura con reglas de negocio (crear una actividad, reprogramarla) pasa por <code>services/</code>.</li>
+          <li><b><code>tasks/reminders.py</code> llama a <code>notification_service</code></b>, el mismo módulo que usaría un futuro endpoint de "reenviar notificación manualmente" — el canal de entrega (push, WhatsApp) nunca se decide dos veces en dos archivos distintos.</li>
+          <li><b><code>schemas/</code> nunca importa de <code>models/</code></b> ni al revés; lo que los conecta es siempre un router o un service, para que un cambio de forma en la API no obligue a tocar el ORM y viceversa.</li>
+        </ul>
+
+        <p><code>docker-compose.yml</code> arranca los cinco procesos que corren en paralelo incluso en desarrollo local, porque el flujo de recordatorios no se puede probar de verdad con solo la API arriba:</p>
+        <pre class="code">services:
+  api:
+    build: .
+    command: uvicorn app.main:app --reload --host 0.0.0.0
+    depends_on: [postgres, redis]
+
+  worker:
+    build: .
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    depends_on: [postgres, redis]
+
+  beat:
+    build: .
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    depends_on: [redis]
+
+  postgres:
+    image: postgres:16
+  redis:
+    image: redis:7</pre>
+      </section>
+
+      <section id="flutter">
+        <div class="sec-head"><span class="sec-num">§12</span><h2>Frontend Flutter: Riverpod y vistas de calendario</h2></div>
+        <p>Riverpod 2 con generación de código (<code>@riverpod</code>), un provider por responsabilidad, y los repositorios como única puerta hacia el backend — ningún widget llama a <code>Dio</code> directamente. La pieza que conecta todo con las fases anteriores: la vista de calendario nunca dibuja actividades sin fecha, porque para eso existe la pantalla de backlog de la §4/§8.</p>
+
+        <h3>Dependencias clave</h3>
+        <div class="table-wrap">
+          <table class="schema">
+            <tr><th>Paquete</th><th class="desc">Para qué</th></tr>
+            <tr><td>flutter_riverpod<br>riverpod_annotation</td><td class="desc">estado y DI, con codegen (<code>build_runner</code>)</td></tr>
+            <tr><td>dio</td><td class="desc">cliente HTTP + interceptores</td></tr>
+            <tr><td>freezed<br>json_serializable</td><td class="desc">modelos inmutables espejo de los schemas Pydantic de la §9</td></tr>
+            <tr><td>go_router</td><td class="desc">navegación declarativa + deep link desde push</td></tr>
+            <tr><td>syncfusion_flutter_calendar</td><td class="desc">vistas día/semana/mes</td></tr>
+            <tr><td>firebase_messaging</td><td class="desc">token FCM y manejo del tap en la notificación</td></tr>
+            <tr><td>flutter_secure_storage</td><td class="desc">access/refresh token en el dispositivo</td></tr>
+          </table>
+        </div>
+
+        <h3>Estructura de <code>lib/</code></h3>
+        <pre class="code">lib/
+├── main.dart                        # ProviderScope, Firebase.initializeApp, MaterialApp.router
+├── core/
+│   ├── network/dio_client.dart       # Dio + interceptor de auth y refresh
+│   ├── storage/secure_token_storage.dart
+│   └── router/app_router.dart        # go_router + deep link desde push
+│
+├── features/
+│   ├── auth/
+│   │   ├── data/auth_repository.dart
+│   │   ├── application/auth_notifier.dart      # AsyncNotifier&lt;AuthState&gt;
+│   │   └── presentation/login_screen.dart
+│   │
+│   ├── calendar/
+│   │   ├── data/activity_repository.dart
+│   │   ├── application/
+│   │   │   ├── visible_range_provider.dart      # rango visible del calendario
+│   │   │   └── activities_for_range_provider.dart
+│   │   └── presentation/
+│   │       ├── calendar_screen.dart              # SfCalendar día/semana/mes
+│   │       └── activity_detail_screen.dart
+│   │
+│   ├── backlog/
+│   │   ├── application/unscheduled_activities_provider.dart
+│   │   └── presentation/backlog_screen.dart
+│   │
+│   └── notifications/
+│       └── application/device_registration_notifier.dart
+│
+└── models/
+    ├── activity.dart                  # freezed, espejo de ActivityRead (§9)
+    └── auth_tokens.dart</pre>
+
+        <h3>Modelo — espejo de <code>ActivityRead</code></h3>
+        <pre class="code">@freezed
+class Activity with _$Activity {
+  const factory Activity({
+    required String id,
+    required String type,
+    required String title,
+    String? description,
+    String? contactId,
+    DateTime? startsAt,
+    DateTime? endsAt,
+    required String status,
+    String? location,
+    required String timezone,
+  }) = _Activity;
+
+  factory Activity.fromJson(Map&lt;String, dynamic&gt; json) =&gt; _$ActivityFromJson(json);
+}</pre>
+        <p><code>startsAt</code> nullable en el modelo Dart, igual que en la BD y en el schema Pydantic — la ausencia de fecha viaja intacta por las tres capas en vez de convertirse en un valor centinela en algún punto intermedio.</p>
+
+        <h3>Cliente HTTP: el interceptor habla con el auth de la §10</h3>
+        <p>Cuando el backend responde 401, el interceptor no reintenta a ciegas: dispara el mismo flujo de <code>/auth/refresh</code> de la §10 (rotación incluida) y solo reintenta la petición original si el refresh tuvo éxito.</p>
+        <pre class="code">class DioClient {
+  DioClient(this._ref) {
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          final token = await _ref.read(secureTokenStorageProvider).readAccessToken();
+          if (token != null) options.headers['Authorization'] = 'Bearer $token';
+          handler.next(options);
+        },
+        onError: (error, handler) async {
+          if (error.response?.statusCode == 401) {
+            final refreshed = await _ref.read(authNotifierProvider.notifier).refreshSession();
+            if (refreshed) {
+              final retryRequest = await _dio.fetch(error.requestOptions);
+              return handler.resolve(retryRequest);
+            }
+          }
+          handler.next(error);
+        },
+      ),
+    );
+  }
+
+  final Ref _ref;
+  final Dio _dio = Dio(BaseOptions(baseUrl: ApiConfig.baseUrl));
+
+  Dio get instance =&gt; _dio;
+}
+
+final dioClientProvider = Provider((ref) =&gt; DioClient(ref).instance);</pre>
+        <p>Si el refresh también falla (token revocado o reutilizado, ver §10), <code>refreshSession()</code> limpia la sesión local y <code>go_router</code> redirige a login mediante un <code>refreshListenable</code> sobre <code>authNotifierProvider</code> — no hace falta que cada pantalla revise manualmente si sigue autenticada.</p>
+
+        <h3>Repositorio de actividades</h3>
+        <pre class="code">class ActivityRepository {
+  ActivityRepository(this._dio);
+  final Dio _dio;
+
+  Future&lt;List&lt;Activity&gt;&gt; fetchActivities({
+    required DateTime from,
+    required DateTime to,
+    String? type,
+    String? status,
+  }) async {
+    final response = await _dio.get('/activities', queryParameters: {
+      'from': from.toUtc().toIso8601String(),
+      'to': to.toUtc().toIso8601String(),
+      if (type != null) 'type': type,
+      if (status != null) 'status': status,
+    });
+    return (response.data['items'] as List)
+        .map((json) =&gt; Activity.fromJson(json))
+        .toList();
+  }
+
+  Future&lt;List&lt;Activity&gt;&gt; fetchUnscheduled() async {
+    final response = await _dio.get('/activities/unscheduled');
+    return (response.data['items'] as List).map((j) =&gt; Activity.fromJson(j)).toList();
+  }
+}
+
+final activityRepositoryProvider =
+    Provider((ref) =&gt; ActivityRepository(ref.watch(dioClientProvider)));</pre>
+        <p><code>from</code>/<code>to</code> siempre se envían en UTC — el mismo contrato que fija la §6 — y nunca se recorta el rango en el cliente; el backend ya filtra por lo que la vista realmente necesita.</p>
+
+        <h3>Providers: el rango visible maneja lo que se pide</h3>
+        <p><code>activitiesForRange</code> no tiene lógica propia de cuándo refrescar: simplemente observa <code>visibleRangeProvider</code>, y Riverpod recalcula solo cuando ese rango cambia — cambiar de vista semana a mes, o deslizar a la semana siguiente, dispara una nueva petición sin código adicional de invalidación manual.</p>
+        <pre class="code">@riverpod
+class VisibleRange extends _$VisibleRange {
+  @override
+  DateTimeRange build() =&gt; _weekRangeContaining(DateTime.now());
+
+  void setRange(DateTimeRange range) =&gt; state = range;
+}
+
+@riverpod
+Future&lt;List&lt;Activity&gt;&gt; activitiesForRange(ActivitiesForRangeRef ref) {
+  final range = ref.watch(visibleRangeProvider);
+  final repo = ref.watch(activityRepositoryProvider);
+  return repo.fetchActivities(from: range.start, to: range.end);
+}</pre>
+
+        <h3>Vista de calendario (Syncfusion, día/semana/mes)</h3>
+        <p>El <code>DataSource</code> filtra por <code>startsAt != null</code> como salvaguarda explícita: aunque el backend nunca debería devolver una actividad sin fecha en <code>/activities</code> con rango, la vista no confía ciegamente en eso — una actividad sin fecha en la grilla del calendario sería un bug visible de inmediato.</p>
+        <pre class="code">class CalendarScreen extends ConsumerWidget {
+  const CalendarScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final activitiesAsync = ref.watch(activitiesForRangeProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Agenda'), actions: [
+        IconButton(
+          icon: const Icon(Icons.inbox_outlined),
+          onPressed: () =&gt; context.push('/backlog'),
+        ),
+      ]),
+      body: activitiesAsync.when(
+        data: (activities) =&gt; SfCalendar(
+          view: CalendarView.week,
+          dataSource: _ActivityDataSource(activities),
+          onViewChanged: (details) {
+            final range = DateTimeRange(
+              start: details.visibleDates.first,
+              end: details.visibleDates.last,
+            );
+            ref.read(visibleRangeProvider.notifier).setRange(range);
+          },
+          onTap: (details) {
+            final activity = details.appointments?.first as Activity?;
+            if (activity != null) context.push('/activities/${activity.id}');
+          },
+        ),
+        loading: () =&gt; const Center(child: CircularProgressIndicator()),
+        error: (error, _) =&gt; ErrorRetryView(onRetry: () =&gt; ref.invalidate(activitiesForRangeProvider)),
+      ),
+    );
+  }
+}
+
+class _ActivityDataSource extends CalendarDataSource {
+  _ActivityDataSource(List&lt;Activity&gt; activities) {
+    appointments = activities.where((a) =&gt; a.startsAt != null).toList();
+  }
+
+  @override
+  DateTime getStartTime(int index) =&gt; (appointments![index] as Activity).startsAt!;
+
+  @override
+  DateTime getEndTime(int index) =&gt;
+      (appointments![index] as Activity).endsAt ?? getStartTime(index).add(const Duration(minutes: 30));
+
+  @override
+  String getSubject(int index) =&gt; (appointments![index] as Activity).title;
+}</pre>
+        <p>El botón de bandeja en la <code>AppBar</code> es intencional: es la única forma de llegar a las actividades sin fecha desde la pantalla principal, para que "pendiente por programar" se sienta como una bandeja separada y no como una fecha rara dentro del calendario.</p>
+
+        <h3>Backlog de actividades sin fecha</h3>
+        <pre class="code">@riverpod
+Future&lt;List&lt;Activity&gt;&gt; unscheduledActivities(UnscheduledActivitiesRef ref) {
+  return ref.watch(activityRepositoryProvider).fetchUnscheduled();
+}
+
+class BacklogScreen extends ConsumerWidget {
+  const BacklogScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final backlogAsync = ref.watch(unscheduledActivitiesProvider);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Pendientes por programar')),
+      body: backlogAsync.when(
+        data: (items) =&gt; ListView.builder(
+          itemCount: items.length,
+          itemBuilder: (context, i) =&gt; ListTile(
+            title: Text(items[i].title),
+            subtitle: Text(items[i].description ?? ''),
+            trailing: TextButton(
+              child: const Text('Programar'),
+              onPressed: () =&gt; context.push('/activities/${items[i].id}/schedule'),
+            ),
+          ),
+        ),
+        loading: () =&gt; const Center(child: CircularProgressIndicator()),
+        error: (e, _) =&gt; ErrorRetryView(onRetry: () =&gt; ref.invalidate(unscheduledActivitiesProvider)),
+      ),
+    );
+  }
+}</pre>
+        <p>"Programar" navega a la misma pantalla de edición de actividad, no a una nueva — asignar una fecha por primera vez y reprogramar una ya existente son, a propósito, el mismo flujo de <code>PATCH /activities/{id}</code> de la §6.</p>
+
+        <h3>Registro de dispositivo y deep link desde el push</h3>
+        <p>Conecta directo con la §8: el token FCM se registra contra <code>POST /devices</code> justo después del login (y de nuevo si Firebase lo rota), y el payload <code>{"activity_id", "type": "reminder"}</code> que arma <code>_send_push</code> en el backend es lo que <code>go_router</code> usa para saltar directo al detalle.</p>
+        <pre class="code">@riverpod
+class DeviceRegistration extends _$DeviceRegistration {
+  @override
+  FutureOr&lt;void&gt; build() {}
+
+  Future&lt;void&gt; registerCurrentDevice() async {
+    final token = await FirebaseMessaging.instance.getToken();
+    if (token == null) return;
+    final platform = Platform.isIOS ? 'ios' : 'android';
+    await ref.read(deviceRepositoryProvider).register(fcmToken: token, platform: platform);
+  }
+}</pre>
+        <pre class="code">// core/router/app_router.dart
+FirebaseMessaging.onMessageOpenedApp.listen((message) {
+  final activityId = message.data['activity_id'];
+  if (activityId != null) router.push('/activities/$activityId');
+});
+
+FirebaseMessaging.instance.getInitialMessage().then((message) {
+  final activityId = message?.data['activity_id'];
+  if (activityId != null) router.push('/activities/$activityId');
+});</pre>
+        <p>Las dos suscripciones cubren los dos casos reales: <code>onMessageOpenedApp</code> cuando la app ya estaba en segundo plano, y <code>getInitialMessage</code> cuando el tap en la notificación es lo que abre la app desde cero (cold start) — omitir la segunda es el bug clásico de "el deep link solo funciona a veces".</p>
+      </section>
+
+      <section id="cicd">
+        <div class="sec-head"><span class="sec-num">§13</span><h2>CI/CD — Fase 7</h2></div>
+        <p>Un principio gobierna todo el pipeline: <b>la imagen que corre en producción es exactamente la misma que se probó en staging</b> — nunca se reconstruye para "promoverla". Lo que cambia entre ambientes es la configuración (variables de entorno, secretos), no el artefacto.</p>
+
+        <div class="flow-strip">
+          <div class="flow-step">PR abierto<span class="tag">lint + tests</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">Merge a main<span class="tag">build + push imagen</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step done">Deploy staging<span class="tag">automático</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">Se crea tag v1.2.0</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step pending">Aprobación manual<span class="tag">GitHub Environment</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step done">Deploy producción<span class="tag">misma imagen, sin rebuild</span></div>
+        </div>
+
+        <h3>Backend — CI en cada pull request</h3>
+        <p>Corre contra Postgres y Redis reales como <i>service containers</i>, no mocks — para este proyecto en particular, donde la corrección depende de <code>TIMESTAMPTZ</code> y de <code>SELECT ... FOR UPDATE SKIP LOCKED</code> (§8), probar contra un Postgres real no es opcional.</p>
+        <pre class="code"># .github/workflows/ci.yml
+name: CI
+on:
+  pull_request:
+    paths: ["backend/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: omnitask_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready" --health-interval=5s --health-retries=5
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install poetry && poetry install
+      - run: poetry run ruff check .
+      - run: poetry run alembic upgrade head
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/omnitask_test
+      - run: poetry run pytest --cov=app
+        env:
+          DATABASE_URL: postgresql://postgres:test@localhost:5432/omnitask_test
+          REDIS_URL: redis://localhost:6379/0</pre>
+
+        <h3>Backend — deploy automático a staging</h3>
+        <p>Se ejecuta al hacer merge a <code>main</code>. Construye la imagen una sola vez, corre las migraciones antes de intercambiar el tráfico, y valida con un smoke test contra <code>/healthz</code> antes de dar por buena la corrida.</p>
+        <pre class="code"># .github/workflows/cd-staging.yml
+name: Deploy staging
+on:
+  push:
+    branches: [main]
+    paths: ["backend/**"]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: backend
+          push: true
+          tags: ghcr.io/clinicacampbell/omnitask-api:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Migraciones
+        run: ssh deploy@staging "docker run --rm --env-file /etc/omnitask/staging.env ghcr.io/clinicacampbell/omnitask-api:${{ github.sha }} alembic upgrade head"
+      - name: Roll out
+        run: ssh deploy@staging "cd /srv/omnitask && IMAGE_TAG=${{ github.sha }} docker compose up -d --no-deps api worker beat"
+      - name: Smoke test
+        run: curl --fail https://staging-api.omnitask.clinicacampbell.com.co/healthz</pre>
+
+        <h3>Backend — promoción a producción (sin rebuild)</h3>
+        <p><code>github.sha</code> en un push de tag es el commit al que apunta ese tag — el mismo commit que ya se construyó y probó en staging. Por eso este workflow no tiene paso de build: reutiliza <code>ghcr.io/.../omnitask-api:${{ github.sha }}</code> tal cual. El <code>environment: production</code> con revisor obligatorio configurado en GitHub es el único gate manual de todo el pipeline.</p>
+        <pre class="code"># .github/workflows/cd-production.yml
+name: Deploy production
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production   # requiere aprobación manual (regla de protección del environment)
+    steps:
+      - name: Backup antes de migrar
+        run: ssh deploy@prod "pg_dump -Fc omnitask > /backups/omnitask-$(date +%Y%m%d%H%M).dump"
+      - name: Migraciones
+        run: ssh deploy@prod "docker run --rm --env-file /etc/omnitask/prod.env ghcr.io/clinicacampbell/omnitask-api:${{ github.sha }} alembic upgrade head"
+      - name: Roll out
+        run: ssh deploy@prod "cd /srv/omnitask && IMAGE_TAG=${{ github.sha }} docker compose up -d --no-deps api worker beat"
+      - name: Smoke test
+        run: curl --fail https://api.omnitask.clinicacampbell.com.co/healthz</pre>
+
+        <div class="callout alt">
+          <span class="label">Migraciones seguras de rollback</span>
+          Si un despliegue falla el smoke test, el rollback es redesplegar el <code>IMAGE_TAG</code> anterior — pero eso solo funciona si las migraciones son compatibles hacia atrás por al menos un release (patrón expand/contract: agregar columnas nullable primero, dejar de escribir a las viejas en un release siguiente, borrarlas en un tercero). Nunca un <code>DROP COLUMN</code> en el mismo release que deja de usarla.
+        </div>
+
+        <h3>Flutter — CI en cada pull request</h3>
+        <pre class="code"># .github/workflows/flutter-ci.yml
+name: Flutter CI
+on:
+  pull_request:
+    paths: ["mobile/**"]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { flutter-version: "3.24.0", channel: "stable" }
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: flutter analyze
+      - run: flutter test</pre>
+
+        <h3>Flutter — release a las tiendas</h3>
+        <p>Para firmar y publicar en las stores, en particular iOS, conviene <b>Codemagic</b> (o Bitrise) en vez de forzar runners macOS de GitHub Actions: manejan certificados, provisioning profiles y la subida a TestFlight/Play Console con mucho menos fricción que armarlo a mano con fastlane sobre GH Actions.</p>
+        <pre class="code"># codemagic.yaml
+workflows:
+  release:
+    name: OmniTask release
+    triggering:
+      events: [tag]
+      tag_patterns: ["v*.*.*"]
+    environment:
+      flutter: stable
+      groups: [app_store_credentials, play_store_credentials]
+    scripts:
+      - flutter pub get
+      - dart run build_runner build --delete-conflicting-outputs
+      - flutter build appbundle --release
+      - flutter build ipa --release
+    artifacts:
+      - build/**/outputs/**/*.aab
+      - build/ios/ipa/*.ipa
+    publishing:
+      google_play:
+        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        submit_to_testflight: true</pre>
+        <p>El mismo tag <code>v*.*.*</code> dispara tanto el deploy del backend como el build móvil — versión de API y versión de app avanzan juntas, evitando que la app en las stores le hable a un backend con un contrato distinto.</p>
+
+        <h3>Observabilidad mínima para no volar a ciegas</h3>
+        <ul>
+          <li><b><code>GET /healthz</code></b> — verifica conexión a Postgres y Redis; lo usan tanto el smoke test del pipeline como el readiness probe del orquestador.</li>
+          <li><b>Logs estructurados</b> (JSON, <code>structlog</code>) con un <code>request_id</code> por petición, para poder seguir una sola llamada a través de API → Celery → webhook de Meta.</li>
+          <li><b>Métricas Prometheus</b>: latencia y tasa de error de la API (<code>prometheus-fastapi-instrumentator</code>), profundidad de la cola de Celery, y tasa de éxito/fallo por canal en <code>notification_log</code>.</li>
+          <li><b>Alertas</b> a Slack/PagerDuty: cola de recordatorios acumulada por más de 5 minutos (síntoma de que un worker está caído), tasa de fallos de WhatsApp por encima de un umbral, o un smoke test de despliegue que falla.</li>
+        </ul>
+        <p>Esto no es exhaustivo — es lo mínimo con lo que una notificación de cita perdida se detecta en minutos y no cuando un paciente llama a preguntar por qué nunca le llegó el recordatorio.</p>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>
+    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §13 añadida: pipelines de CI/CD y observabilidad de la fase 7 · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+  </footer>
+</div>
