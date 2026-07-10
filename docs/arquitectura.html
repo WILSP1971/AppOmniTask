@@ -522,6 +522,7 @@
       <a href="#config-perfil">§16 Configuración y perfil</a>
       <a href="#inbox">§17 Notificaciones y bandeja de entrada</a>
       <a href="#windows-iis">§18 PostgreSQL y conexión en Windows/IIS</a>
+      <a href="#api-base-url">§19 La app y la API en producción</a>
     </nav>
 
     <main>
@@ -1603,7 +1604,7 @@ class Activity with _$Activity {
   }
 
   final Ref _ref;
-  final Dio _dio = Dio(BaseOptions(baseUrl: ApiConfig.baseUrl));
+  final Dio _dio = Dio(BaseOptions(baseUrl: ApiConfig.baseUrl)); // valor real: §19
 
   Dio get instance =&gt; _dio;
 }
@@ -1931,8 +1932,8 @@ workflows:
     scripts:
       - flutter pub get
       - dart run build_runner build --delete-conflicting-outputs
-      - flutter build appbundle --release
-      - flutter build ipa --release
+      - flutter build appbundle --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
+      - flutter build ipa --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
     artifacts:
       - build/**/outputs/**/*.aab
       - build/ios/ipa/*.ipa
@@ -3516,10 +3517,61 @@ nssm install OmniTaskBeat "C:\omnitask\venv\Scripts\python.exe" ^
         <p>Los pasos <code>ssh deploy@staging "docker ..."</code> del §13 no aplican tal cual a este servidor. El reemplazo más directo es instalar un <b>GitHub Actions self-hosted runner</b> en esta misma máquina Windows: el job de despliegue corre localmente con PowerShell (copiar los archivos nuevos, reiniciar el Application Pool de IIS y los servicios <code>OmniTaskWorker</code>/<code>OmniTaskBeat</code> con NSSM) en vez de empujar una imagen Docker a un host remoto. Es un ajuste de mecanismo, no de principio — el gate manual de <code>environment: production</code> y la idea de nunca reconstruir para producción siguen aplicando igual.</p>
       </section>
 
+      <section id="api-base-url">
+        <div class="sec-head"><span class="sec-num">§19</span><h2>La app y la API en producción</h2></div>
+        <p>Para que quede explícito: esto es una app móvil (Flutter, §12) que <b>nunca toca la base de datos directamente</b>. Todo dato — crear una cita, ver el calendario, marcar una notificación como leída — sale del teléfono como una petición HTTPS hacia la API (FastAPI), y es la API la única que le habla a PostgreSQL, en el mismo servidor Windows del §18. Ese diseño no cambia con esta pregunta; lo que faltaba era la URL real.</p>
+
+        <pre class="code">Celular (Flutter)  ──HTTPS──►  https://appsintranet.esculapiosis.com/api/v1  ──local──►  PostgreSQL
+                                (IIS → httpPlatformHandler → Uvicorn, §18)      (127.0.0.1:5432, §18)</pre>
+
+        <p>Con la red pública y el certificado público confirmados, no hace falta nada especial de confianza de certificados ni VPN en la app — Android e iOS ya confían en un certificado de Let's Encrypt o comercial a través de su almacén de certificados del sistema, sin tocar <code>network_security_config.xml</code> ni nada equivalente en iOS.</p>
+
+        <h3>Lo que sí cambia: la URL deja de ser un placeholder</h3>
+        <p>En la §12, <code>DioClient</code> apuntaba a <code>ApiConfig.baseUrl</code> sin que <code>ApiConfig</code> se hubiera definido todavía. Ahora tiene un valor real de producción, y uno de desarrollo local, elegidos en tiempo de compilación — así el mismo código corre contra un backend local en el emulador y, en el build de release, contra el servidor real, sin tocar una sola línea.</p>
+        <pre class="code">// core/config/api_config.dart
+class ApiConfig {
+  static const _prodBaseUrl = 'https://appsintranet.esculapiosis.com/api/v1';
+
+  // Emulador Android: 10.0.2.2 es el alias que Android usa para "el localhost
+  // de la máquina anfitriona". En el simulador de iOS, en cambio, se usa
+  // localhost directo porque comparte la red del Mac.
+  static const _devBaseUrl = 'http://10.0.2.2:8000/api/v1';
+
+  static const baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: _devBaseUrl,
+  );
+}</pre>
+        <pre class="code"># desarrollo local — no hace falta pasar nada, _devBaseUrl ya es el default
+flutter run
+
+# para probar el build de un dispositivo contra el servidor real
+flutter run --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1</pre>
+
+        <p><code>String.fromEnvironment</code> resuelve en tiempo de compilación, no en tiempo de ejecución — por eso el build de release necesita recibir <code>--dart-define</code> explícitamente; ya quedó cableado en el pipeline de Codemagic de la §13:</p>
+        <pre class="code"># codemagic.yaml — addendum a la §13
+    scripts:
+      - flutter pub get
+      - dart run build_runner build --delete-conflicting-outputs
+      - flutter build appbundle --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
+      - flutter build ipa --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1</pre>
+
+        <h3>Un detalle de Android en desarrollo, no en producción</h3>
+        <p>El servidor real es HTTPS, así que en release no hay nada que ajustar. Pero <code>http://10.0.2.2:8000</code> en desarrollo es HTTP plano, y Android bloquea tráfico sin cifrar por defecto desde la API 28 — hay que habilitarlo únicamente en el manifest de <i>debug</i>, nunca en el de release, para no aflojar esa protección en producción por accidente.</p>
+        <pre class="code">&lt;!-- android/app/src/debug/AndroidManifest.xml --&gt;
+&lt;application android:usesCleartextTraffic="true" /&gt;</pre>
+        <p>Al vivir en <code>src/debug/</code> (no en <code>src/main/</code>), Flutter lo aplica solo a los builds de depuración — el <code>flutter build appbundle --release</code> de la §13 nunca lo incluye.</p>
+
+        <div class="callout">
+          <span class="label">Algo que no aplica aquí</span>
+          CORS no es un problema para esta app: es una restricción que imponen los navegadores, no los clientes HTTP nativos. Dio, corriendo dentro de la app Flutter en el teléfono, no está sujeto a esa política — el backend no necesita configurar cabeceras CORS por la app móvil (solo tendría sentido si más adelante se agrega un cliente web).
+        </div>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §18 añadida: scripts SQL y conexión para PostgreSQL + FastAPI en el mismo servidor Windows/IIS · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 10 de julio de 2026 · §19 añadida: la app y la API en producción (https://appsintranet.esculapiosis.com/) · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>

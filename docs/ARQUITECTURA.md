@@ -29,6 +29,7 @@
 16. [Configuración y perfil de usuario](#16--configuración-y-perfil-de-usuario)
 17. [Notificaciones y bandeja de entrada](#17--notificaciones-y-bandeja-de-entrada)
 18. [PostgreSQL y conexión: mismo servidor Windows con IIS](#18--postgresql-y-conexión-mismo-servidor-windows-con-iis)
+19. [La app y la API en producción](#19--la-app-y-la-api-en-producción)
 
 ---
 
@@ -996,7 +997,7 @@ class DioClient {
   }
 
   final Ref _ref;
-  final Dio _dio = Dio(BaseOptions(baseUrl: ApiConfig.baseUrl));
+  final Dio _dio = Dio(BaseOptions(baseUrl: ApiConfig.baseUrl)); // valor real: §19
 
   Dio get instance => _dio;
 }
@@ -1349,8 +1350,8 @@ workflows:
     scripts:
       - flutter pub get
       - dart run build_runner build --delete-conflicting-outputs
-      - flutter build appbundle --release
-      - flutter build ipa --release
+      - flutter build appbundle --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
+      - flutter build ipa --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
     artifacts:
       - build/**/outputs/**/*.aab
       - build/ios/ipa/*.ipa
@@ -3082,6 +3083,72 @@ Redis dejó de mantener builds oficiales para Windows hace años. En vez de depe
 ### Addendum al §13: el pipeline de CI/CD asumía Linux
 
 Los pasos `ssh deploy@staging "docker ..."` del §13 no aplican tal cual a este servidor. El reemplazo más directo es instalar un **GitHub Actions self-hosted runner** en esta misma máquina Windows: el job de despliegue corre localmente con PowerShell (copiar los archivos nuevos, reiniciar el Application Pool de IIS y los servicios `OmniTaskWorker`/`OmniTaskBeat` con NSSM) en vez de empujar una imagen Docker a un host remoto. Es un ajuste de mecanismo, no de principio — el gate manual de `environment: production` y la idea de nunca reconstruir para producción siguen aplicando igual.
+
+---
+
+## §19 — La app y la API en producción
+
+Para que quede explícito: esto es una app móvil (Flutter, §12) que **nunca toca la base de datos directamente**. Todo dato — crear una cita, ver el calendario, marcar una notificación como leída — sale del teléfono como una petición HTTPS hacia la API (FastAPI), y es la API la única que le habla a PostgreSQL, en el mismo servidor Windows del §18. Ese diseño no cambia con esta pregunta; lo que faltaba era la URL real.
+
+```
+Celular (Flutter)  ──HTTPS──►  https://appsintranet.esculapiosis.com/api/v1  ──local──►  PostgreSQL
+                                (IIS → httpPlatformHandler → Uvicorn, §18)      (127.0.0.1:5432, §18)
+```
+
+Con la red pública y el certificado público confirmados, no hace falta nada especial de confianza de certificados ni VPN en la app — Android e iOS ya confían en un certificado de Let's Encrypt o comercial a través de su almacén de certificados del sistema, sin tocar `network_security_config.xml` ni nada equivalente en iOS.
+
+### Lo que sí cambia: la URL deja de ser un placeholder
+
+En la §12, `DioClient` apuntaba a `ApiConfig.baseUrl` sin que `ApiConfig` se hubiera definido todavía. Ahora tiene un valor real de producción, y uno de desarrollo local, elegidos en tiempo de compilación — así el mismo código corre contra un backend local en el emulador y, en el build de release, contra el servidor real, sin tocar una sola línea.
+
+```dart
+// core/config/api_config.dart
+class ApiConfig {
+  static const _prodBaseUrl = 'https://appsintranet.esculapiosis.com/api/v1';
+
+  // Emulador Android: 10.0.2.2 es el alias que Android usa para "el localhost
+  // de la máquina anfitriona". En el simulador de iOS, en cambio, se usa
+  // localhost directo porque comparte la red del Mac.
+  static const _devBaseUrl = 'http://10.0.2.2:8000/api/v1';
+
+  static const baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: _devBaseUrl,
+  );
+}
+```
+
+```bash
+# desarrollo local — no hace falta pasar nada, _devBaseUrl ya es el default
+flutter run
+
+# para probar el build de un dispositivo contra el servidor real
+flutter run --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
+```
+
+`String.fromEnvironment` resuelve en tiempo de compilación, no en tiempo de ejecución — por eso el build de release necesita recibir `--dart-define` explícitamente; ya quedó cableado en el pipeline de Codemagic de la §13:
+
+```yaml
+# codemagic.yaml — addendum a la §13
+    scripts:
+      - flutter pub get
+      - dart run build_runner build --delete-conflicting-outputs
+      - flutter build appbundle --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
+      - flutter build ipa --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
+```
+
+### Un detalle de Android en desarrollo, no en producción
+
+El servidor real es HTTPS, así que en release no hay nada que ajustar. Pero `http://10.0.2.2:8000` en desarrollo es HTTP plano, y Android bloquea tráfico sin cifrar por defecto desde la API 28 — hay que habilitarlo únicamente en el manifest de *debug*, nunca en el de release, para no aflojar esa protección en producción por accidente.
+
+```xml
+<!-- android/app/src/debug/AndroidManifest.xml -->
+<application android:usesCleartextTraffic="true" />
+```
+
+Al vivir en `src/debug/` (no en `src/main/`), Flutter lo aplica solo a los builds de depuración — el `flutter build appbundle --release` de la §13 nunca lo incluye.
+
+> **Algo que no aplica aquí:** CORS no es un problema para esta app: es una restricción que imponen los navegadores, no los clientes HTTP nativos. Dio, corriendo dentro de la app Flutter en el teléfono, no está sujeto a esa política — el backend no necesita configurar cabeceras CORS por la app móvil (solo tendría sentido si más adelante se agrega un cliente web).
 
 ---
 
