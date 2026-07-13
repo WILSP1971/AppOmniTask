@@ -61,3 +61,18 @@ public interface IPushSender
 {
     Task SendAsync(string fcmToken, string title, string body, IDictionary<string, string> data);
 }
+
+// Implementada en la capa Api (Security.cs) — Argon2id (§10).
+public interface IPasswordHasher
+{
+    string Hash(string password);
+    bool Verify(string password, string hash);
+}
+
+// Implementada en la capa Api (Security.cs) — JWT + jti (§10).
+public interface ITokenFactory
+{
+    string CreateAccessToken(Guid userId);
+    (string Token, Guid Jti, DateTimeOffset ExpiresAt) CreateRefreshToken(Guid userId);
+    Guid ReadRefreshJti(string token);
+}

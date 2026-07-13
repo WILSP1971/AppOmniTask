@@ -44,13 +44,19 @@ public record ActivityCreateRequest(
     DateTimeOffset? EndsAt,
     string? Location);
 
+// ClearStartsAt/ClearEndsAt existen porque un valor null en StartsAt/EndsAt es
+// ambiguo por sí solo ("no lo toques" vs. "bórralo") — con el flag explícito,
+// el cliente puede pedir "quitar la fecha" (devolver la actividad al backlog)
+// sin que un simple omitir el campo tenga el mismo efecto por accidente.
 public record ActivityUpdateRequest(
     string? Title,
     string? Description,
     DateTimeOffset? StartsAt,
-    DateTimeOffset? EndsAt,
-    string? Status,
-    string? Location);
+    bool ClearStartsAt = false,
+    DateTimeOffset? EndsAt = null,
+    bool ClearEndsAt = false,
+    string? Status = null,
+    string? Location = null);
 
 public record ReminderSummaryResponse(Guid Id, DateTimeOffset RemindAt, string Channel, string Status);
 

@@ -7,9 +7,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.10" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
-    <PackageReference Include="EFCore.NamingConventions" Version="8.0.10" />
+    <!-- Sin ORM: los servicios llaman directo a las funciones/procedimientos de
+         db/03_stored_procedures_and_functions.sql vía ADO.NET (§23). -->
+    <PackageReference Include="Npgsql" Version="8.0.5" />
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.14" />
     <PackageReference Include="Hangfire.PostgreSql" Version="1.20.10" />
     <PackageReference Include="FirebaseAdmin" Version="3.1.0" />

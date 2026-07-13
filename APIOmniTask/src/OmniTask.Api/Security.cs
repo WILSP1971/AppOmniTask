@@ -5,7 +5,7 @@ using System.Text;
 using Konscious.Security.Cryptography;
 using Microsoft.IdentityModel.Tokens;
 using OmniTask.Application;
-using OmniTask.Application.Services;
+using OmniTask.Application.Interfaces;
 
 namespace OmniTask.Api;
 

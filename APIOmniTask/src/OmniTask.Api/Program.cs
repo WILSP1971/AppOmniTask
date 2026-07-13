@@ -1,26 +1,25 @@
 using System.Text;
+using System.Text.Json;
 using FirebaseAdmin;
 using Google.Apis.Auth.OAuth2;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 using OmniTask.Api;
 using OmniTask.Application.Interfaces;
-using OmniTask.Application.Services;
 using OmniTask.Domain;
 using OmniTask.Infrastructure.BackgroundJobs;
 using OmniTask.Infrastructure.ExternalServices;
-using OmniTask.Infrastructure.Persistence;
+using OmniTask.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var connectionString = builder.Configuration.GetConnectionString("Default")!;
 
 // Mapeo nativo de los ENUM de Postgres (schema.sql) a enums de C# — evita
-// convertir manualmente cada valor en cada consulta.
+// convertir manualmente cada valor en cada llamada a una función/procedimiento.
 var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
 dataSourceBuilder.MapEnum<UserRole>("user_role");
 dataSourceBuilder.MapEnum<DevicePlatform>("device_platform");
@@ -34,8 +33,10 @@ dataSourceBuilder.MapEnum<TemplateCategory>("template_category");
 dataSourceBuilder.MapEnum<TemplateApprovalStatus>("template_approval_status");
 var dataSource = dataSourceBuilder.Build();
 
-builder.Services.AddDbContext<OmniTaskDbContext>(options =>
-    options.UseNpgsql(dataSource).UseSnakeCaseNamingConvention());
+// Sin EF Core: todas las lecturas/escrituras pasan por las funciones y
+// procedimientos de db/03_stored_procedures_and_functions.sql (§23) — este
+// NpgsqlDataSource es el único punto de acceso a la base para toda la API.
+builder.Services.AddSingleton(dataSource);
 
 // Hangfire reemplaza Celery+Redis (§8) usando el mismo Postgres como storage
 // de jobs — un motor menos que operar en el servidor Windows (§18).
@@ -78,7 +79,15 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
-builder.Services.AddControllers();
+builder.Services
+    .AddControllers()
+    .AddJsonOptions(options =>
+    {
+        // Todo el contrato documentado (§6, §9, §16, §17) y el cliente Flutter
+        // (§12, §15) usan snake_case — el default de ASP.NET Core es camelCase,
+        // que rompería tanto las respuestas como el enlazado de los bodies entrantes.
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 

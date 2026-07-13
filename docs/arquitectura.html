@@ -530,6 +530,7 @@
       <a href="#firebase-setup">§20 Crear el proyecto de Firebase</a>
       <a href="#whatsapp-setup">§21 Integración de WhatsApp Business API</a>
       <a href="#backend-csharp">§22 Backend real: C#/.NET</a>
+      <a href="#stored-procedures">§23 Stored procedures y functions</a>
     </nav>
 
     <main>
@@ -3733,20 +3734,17 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=...</pre>
         <pre class="code">APIOmniTask/
 ├── OmniTask.sln
 ├── src/
-│   ├── OmniTask.Domain/           # Entidades y enums — sin dependencias externas
-│   │   ├── Entities.cs             # User, Contact, Device, WhatsAppTemplate, RefreshToken
-│   │   ├── ActivityEntities.cs     # Activity, Reminder, NotificationLog
+│   ├── OmniTask.Domain/           # Solo enums — sin dependencias externas (§23: sin entidades ORM)
 │   │   └── Enums.cs
 │   │
-│   ├── OmniTask.Application/       # Casos de uso — DTOs, interfaces, servicios
+│   ├── OmniTask.Application/       # Casos de uso — DTOs, interfaces (sin implementación)
 │   │   ├── Dtos.cs
-│   │   ├── Interfaces.cs           # IAuthService, IActivityService, IWhatsAppClient, IPushSender...
-│   │   ├── ApiException.cs
-│   │   └── Services/               # AuthService, ActivityService, ContactService,
-│   │                                # DeviceService, NotificationService
+│   │   ├── Interfaces.cs           # IAuthService, IActivityService, IWhatsAppClient, IPasswordHasher...
+│   │   └── ApiException.cs
 │   │
-│   ├── OmniTask.Infrastructure/    # EF Core, Hangfire, clientes externos
-│   │   ├── Persistence/OmniTaskDbContext.cs
+│   ├── OmniTask.Infrastructure/    # Implementación real — SQL, Hangfire, clientes externos (§23)
+│   │   ├── Services/               # AuthService, ActivityService, ContactService, DeviceService,
+│   │   │                            # NotificationService — ADO.NET puro, sin ORM
 │   │   ├── ExternalServices/       # WhatsAppCloudApiClient, FirebasePushSender
 │   │   └── BackgroundJobs/         # ReminderDispatchJob, UnscheduledDigestJob
 │   │
@@ -3779,20 +3777,72 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=...</pre>
         </ul>
 
         <h3>Paquetes NuGet principales</h3>
-        <p><code>Npgsql.EntityFrameworkCore.PostgreSQL</code>, <code>EFCore.NamingConventions</code> (mapea las columnas <code>snake_case</code> de <code>schema.sql</code> sin anotar cada una a mano), <code>Hangfire.AspNetCore</code> + <code>Hangfire.PostgreSql</code>, <code>Microsoft.AspNetCore.Authentication.JwtBearer</code>, <code>Konscious.Security.Cryptography.Argon2</code> (mismo hashing que ya estaba decidido), <code>FirebaseAdmin</code>, <code>Swashbuckle.AspNetCore</code>.</p>
+        <p><code>Npgsql</code> (ADO.NET directo — ver addendum de la §23, ya no hay ORM de por medio), <code>Hangfire.AspNetCore</code> + <code>Hangfire.PostgreSql</code>, <code>Microsoft.AspNetCore.Authentication.JwtBearer</code>, <code>Konscious.Security.Cryptography.Argon2</code> (mismo hashing que ya estaba decidido), <code>FirebaseAdmin</code>, <code>Swashbuckle.AspNetCore</code>.</p>
 
         <h3>Antes de desplegar</h3>
         <ol>
-          <li>Correr <code>db/02_add_refresh_tokens_table.sql</code> contra la base existente.</li>
+          <li>Correr, en este orden, <code>db/02_add_refresh_tokens_table.sql</code> y <code>db/03_stored_procedures_and_functions.sql</code> contra la base existente.</li>
           <li>Completar <code>appsettings.Production.json</code> (gitignored) o las variables de entorno del Application Pool con <code>ConnectionStrings:Default</code>, <code>Jwt:Secret</code>, <code>WhatsApp:*</code> y <code>Firebase:CredentialsPath</code> — nunca los valores reales en <code>appsettings.json</code>.</li>
           <li>Publicar (<code>dotnet publish -c Release</code>) y copiar el resultado a la sub-aplicación <code>/APIOmniTask</code> de IIS, con el mismo procedimiento que ya usan las otras APIs de este servidor.</li>
         </ol>
+      </section>
+
+      <section id="stored-procedures">
+        <div class="sec-head"><span class="sec-num">§23</span><h2>Stored procedures y functions de PostgreSQL</h2></div>
+        <p>Toda la lógica de negocio de la API — antes repartida entre EF Core/LINQ y el código C# de los servicios — se movió a PostgreSQL: <code>db/03_stored_procedures_and_functions.sql</code> define <b>funciones</b> (<code>fn_*</code>, invocadas con <code>SELECT</code>, para lecturas y escrituras que devuelven datos) y <b>procedimientos</b> (<code>sp_*</code>, invocados con <code>CALL</code>, para efectos secundarios puros: revocar, borrar, marcar). Los servicios de <code>APIOmniTask/src/OmniTask.Infrastructure/Services/</code> ya no usan Entity Framework — llaman directo vía ADO.NET (<code>NpgsqlDataSource</code>/<code>NpgsqlCommand</code>) a estas funciones y procedimientos. El contrato de la API (§6) no cambió.</p>
+
+        <h3>Convención de errores</h3>
+        <p>Cada función/procedimiento que necesita señalar un error de negocio usa <code>RAISE EXCEPTION ... USING ERRCODE = '...'</code> con un código propio, para que C# traduzca sin depender del texto del mensaje:</p>
+        <div class="table-wrap">
+          <table class="schema">
+            <tr><th>SQLSTATE</th><th>Significado</th><th class="desc">HTTP</th></tr>
+            <tr><td><code>OT001</code></td><td>recurso no encontrado</td><td class="desc">404</td></tr>
+            <tr><td><code>OT002</code></td><td>conflicto</td><td class="desc">409</td></tr>
+            <tr><td><code>OT003</code></td><td>validación inválida</td><td class="desc">422</td></tr>
+          </table>
+        </div>
+        <p><code>SqlServiceBase</code> (Infrastructure) centraliza esta traducción en un solo lugar — ningún servicio individual tiene su propio <code>try/catch</code> de <code>PostgresException</code>.</p>
+
+        <h3>Mapeo endpoint → función/procedimiento</h3>
+        <div class="table-wrap">
+          <table class="schema">
+            <tr><th>Endpoint</th><th class="desc">Objeto SQL</th></tr>
+            <tr><td><code>POST /auth/register</code></td><td class="desc"><code>fn_register_user</code> — chequeo de unicidad + INSERT en el mismo statement, cierra la carrera que tenía la versión anterior</td></tr>
+            <tr><td><code>POST /auth/login</code></td><td class="desc"><code>fn_get_user_by_email</code></td></tr>
+            <tr><td><code>POST /auth/refresh</code></td><td class="desc"><code>fn_rotate_refresh_token</code> — valida y revoca en un solo UPDATE atómico</td></tr>
+            <tr><td><code>POST /auth/logout</code></td><td class="desc"><code>sp_revoke_refresh_token</code></td></tr>
+            <tr><td><code>GET</code>/<code>PATCH /auth/me</code></td><td class="desc"><code>fn_get_user_by_id</code> / <code>fn_update_user_profile</code></td></tr>
+            <tr><td><code>POST /activities</code></td><td class="desc"><code>fn_create_activity</code> — inserta y genera los reminders automáticos en la misma transacción</td></tr>
+            <tr><td><code>GET /activities</code></td><td class="desc"><code>fn_list_activities</code> — filtros + paginación + conteo total en una sola llamada (<code>COUNT(*) OVER()</code>)</td></tr>
+            <tr><td><code>GET /activities/unscheduled</code></td><td class="desc"><code>fn_list_unscheduled_activities</code></td></tr>
+            <tr><td><code>GET /activities/{id}</code></td><td class="desc"><code>fn_get_activity_by_id</code> + <code>fn_list_reminders_for_activity</code></td></tr>
+            <tr><td><code>PATCH</code>/<code>DELETE /activities/{id}</code></td><td class="desc"><code>fn_update_activity</code> — la más cargada de reglas: reprogramar, cerrar, regenerar reminders</td></tr>
+            <tr><td><code>POST</code>/<code>GET</code>/<code>PATCH</code>/<code>DELETE /contacts</code></td><td class="desc"><code>fn_create_contact</code>, <code>fn_list_contacts</code>, <code>fn_update_contact</code>, <code>sp_delete_contact</code></td></tr>
+            <tr><td><code>POST</code>/<code>GET</code>/<code>DELETE /devices</code></td><td class="desc"><code>fn_upsert_device</code> (UPSERT nativo), <code>fn_list_devices</code>, <code>sp_delete_device</code></td></tr>
+            <tr><td><code>GET /notifications</code>, <code>/unread-count</code></td><td class="desc"><code>fn_list_notifications</code>, <code>fn_unread_notification_count</code></td></tr>
+            <tr><td><code>PATCH /notifications/{id}/ack</code>, <code>POST /ack-all</code></td><td class="desc"><code>sp_acknowledge_notification</code>, <code>sp_acknowledge_all_notifications</code></td></tr>
+            <tr><td>Webhook de WhatsApp</td><td class="desc"><code>sp_update_notification_delivery_status</code></td></tr>
+            <tr><td><code>ReminderDispatchJob</code> (Hangfire)</td><td class="desc"><code>fn_claim_due_reminders</code>, <code>fn_get_reminder_dispatch_info</code>, <code>fn_log_notification</code>, <code>sp_mark_reminder_sent</code>/<code>failed</code></td></tr>
+            <tr><td><code>UnscheduledDigestJob</code> (Hangfire)</td><td class="desc"><code>fn_unscheduled_digest_counts</code></td></tr>
+          </table>
+        </div>
+
+        <h3>Lo que se corrigió al bajar la lógica a la base</h3>
+        <p>Escribir <code>fn_update_activity</code> obligó a resolver dos huecos que tenía la versión anterior del endpoint:</p>
+        <ul>
+          <li><b><code>p_clear_starts_at</code>/<code>p_clear_ends_at</code> explícitos</b>: antes, un valor <code>NULL</code> en el request no se podía distinguir de "campo no enviado", así que nunca se podía devolver una actividad al backlog quitándole la fecha. Ahora el cliente lo pide con un flag propio.</li>
+          <li><b>El <code>status</code> se resincroniza con la fecha</b> cuando el cliente no lo especifica: asignar fecha por primera vez pasa a <code>scheduled</code>; quitarla, a <code>unscheduled</code> — antes, "Programar" (§14) dejaba el status desincronizado con la fecha real.</li>
+        </ul>
+        <p>Además, mover el UPSERT de <code>devices</code> y el registro de <code>users</code> a la base (<code>fn_upsert_device</code>, <code>fn_register_user</code>) cierra dos carreras que existían al hacerlo en dos pasos desde la aplicación (verificar y luego escribir): ahora la restricción <code>UNIQUE</code>/<code>ON CONFLICT</code> de Postgres es la única palabra.</p>
+
+        <h3>Addendum a la §22: sin ORM</h3>
+        <p><code>OmniTask.Infrastructure</code> ya no depende de <code>Microsoft.EntityFrameworkCore</code> ni de un <code>DbContext</code> — el único punto de acceso a la base es el <code>NpgsqlDataSource</code> (el mismo que ya mapeaba los ENUM nativos de Postgres a enums de C#, §22), inyectado como singleton en <code>Program.cs</code>. Cada servicio abre una conexión, llama a su función/procedimiento y mapea el <code>NpgsqlDataReader</code> directo al DTO de respuesta.</p>
       </section>
 
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §21 añadida: integración de WhatsApp Business API paso a paso (Fase 0) · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §23 añadida: stored procedures/functions de PostgreSQL invocados desde la API C#, sin ORM · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>

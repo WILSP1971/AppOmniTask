@@ -1,40 +1,52 @@
-using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OmniTask.Application.Interfaces;
-using OmniTask.Domain;
-using OmniTask.Infrastructure.Persistence;
 
 namespace OmniTask.Infrastructure.BackgroundJobs;
 
 // Recurrente diario, 8:00 a.m. (Program.cs) — resumen de actividades sin fecha
-// agrupadas por usuario (Fase 5, §4).
+// agrupadas por usuario (Fase 5, §4), vía fn_unscheduled_digest_counts.
 public class UnscheduledDigestJob
 {
-    private readonly OmniTaskDbContext _db;
+    private readonly NpgsqlDataSource _dataSource;
     private readonly IPushSender _pushSender;
 
-    public UnscheduledDigestJob(OmniTaskDbContext db, IPushSender pushSender)
+    public UnscheduledDigestJob(NpgsqlDataSource dataSource, IPushSender pushSender)
     {
-        _db = db;
+        _dataSource = dataSource;
         _pushSender = pushSender;
     }
 
     public async Task RunAsync()
     {
-        var counts = await _db.Activities
-            .Where(a => a.StartsAt == null && a.Status == ActivityStatus.Unscheduled)
-            .GroupBy(a => a.UserId)
-            .Select(g => new { UserId = g.Key, Count = g.Count() })
-            .ToListAsync();
+        await using var conn = await _dataSource.OpenConnectionAsync();
 
-        foreach (var entry in counts)
+        var counts = new List<(Guid UserId, long Count)>();
+        await using (var cmd = conn.CreateCommand())
         {
-            var devices = await _db.Devices.Where(d => d.UserId == entry.UserId).ToListAsync();
-            foreach (var device in devices)
+            cmd.CommandText = "SELECT * FROM fn_unscheduled_digest_counts()";
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                counts.Add((reader.GetGuid(0), reader.GetInt64(1)));
+        }
+
+        foreach (var (userId, count) in counts)
+        {
+            var devices = new List<string>();
+            await using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT fcm_token FROM fn_list_devices(@user_id)";
+                cmd.Parameters.AddWithValue("user_id", userId);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                    devices.Add(reader.GetString(0));
+            }
+
+            foreach (var fcmToken in devices)
             {
                 await _pushSender.SendAsync(
-                    device.FcmToken,
+                    fcmToken,
                     "Pendientes por programar",
-                    $"Tienes {entry.Count} actividad(es) sin programar",
+                    $"Tienes {count} actividad(es) sin programar",
                     new Dictionary<string, string> { ["type"] = "digest" });
             }
         }

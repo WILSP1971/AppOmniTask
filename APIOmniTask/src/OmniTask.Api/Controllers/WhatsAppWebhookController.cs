@@ -3,9 +3,8 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using OmniTask.Domain;
-using OmniTask.Infrastructure.Persistence;
 
 namespace OmniTask.Api.Controllers;
 
@@ -18,12 +17,12 @@ namespace OmniTask.Api.Controllers;
 public class WhatsAppWebhookController : ControllerBase
 {
     private readonly IConfiguration _config;
-    private readonly OmniTaskDbContext _db;
+    private readonly NpgsqlDataSource _dataSource;
 
-    public WhatsAppWebhookController(IConfiguration config, OmniTaskDbContext db)
+    public WhatsAppWebhookController(IConfiguration config, NpgsqlDataSource dataSource)
     {
         _config = config;
-        _db = db;
+        _dataSource = dataSource;
     }
 
     [HttpGet]
@@ -68,6 +67,8 @@ public class WhatsAppWebhookController : ControllerBase
 
     private async Task ProcessAsync(JsonElement payload)
     {
+        await using var conn = await _dataSource.OpenConnectionAsync();
+
         foreach (var entry in payload.GetProperty("entry").EnumerateArray())
         {
             foreach (var change in entry.GetProperty("changes").EnumerateArray())
@@ -77,7 +78,7 @@ public class WhatsAppWebhookController : ControllerBase
                 if (value.TryGetProperty("statuses", out var statuses))
                 {
                     foreach (var status in statuses.EnumerateArray())
-                        await UpdateDeliveryStatusAsync(status);
+                        await UpdateDeliveryStatusAsync(conn, status);
                 }
 
                 // Mensajes entrantes (respuestas del contacto): se registran para que el
@@ -89,24 +90,26 @@ public class WhatsAppWebhookController : ControllerBase
                 }
             }
         }
-
-        await _db.SaveChangesAsync();
     }
 
-    private async Task UpdateDeliveryStatusAsync(JsonElement status)
+    private static async Task UpdateDeliveryStatusAsync(NpgsqlConnection conn, JsonElement status)
     {
         var wamid = status.GetProperty("id").GetString();
-        var notification = await _db.NotificationLogs.SingleOrDefaultAsync(n => n.ProviderMessageId == wamid);
-        if (notification is null) return;
-
-        notification.Status = status.GetProperty("status").GetString() switch
+        var newStatus = status.GetProperty("status").GetString() switch
         {
             "sent" => NotificationStatus.Sent,
             "delivered" => NotificationStatus.Delivered,
             "read" => NotificationStatus.Read,
             "failed" => NotificationStatus.Failed,
-            _ => notification.Status,
+            _ => (NotificationStatus?)null,
         };
+        if (newStatus is null) return;
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "CALL sp_update_notification_delivery_status(@provider_message_id, @status)";
+        cmd.Parameters.AddWithValue("provider_message_id", wamid!);
+        cmd.Parameters.AddWithValue("status", newStatus.Value);
+        await cmd.ExecuteNonQueryAsync();
     }
 
     private Task LogInboundMessageAsync(JsonElement message)

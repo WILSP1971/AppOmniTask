@@ -23,7 +23,7 @@ public class FirebasePushSender : IPushSender
         catch (FirebaseMessagingException ex) when (ex.MessagingErrorCode == MessagingErrorCode.Unregistered)
         {
             // El token venció o la app se desinstaló — se limpia desde el llamador
-            // (ReminderDispatchJob), que sí tiene acceso al DbContext para borrar el device.
+            // (ReminderDispatchJob), que llama a sp_delete_device_by_id.
             throw;
         }
     }

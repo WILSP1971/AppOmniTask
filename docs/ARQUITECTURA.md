@@ -35,6 +35,7 @@
 20. [Crear el proyecto de Firebase](#20--crear-el-proyecto-de-firebase)
 21. [Integración de WhatsApp Business API, paso a paso](#21--integración-de-whatsapp-business-api-paso-a-paso)
 22. [Backend real: C#/.NET (`APIOmniTask/`)](#22--backend-real-cnet-apiomnitask)
+23. [Stored procedures y functions de PostgreSQL](#23--stored-procedures-y-functions-de-postgresql)
 
 ---
 
@@ -3321,20 +3322,17 @@ El código vive en [`APIOmniTask/`](../APIOmniTask/) en la raíz del repo, junto
 APIOmniTask/
 ├── OmniTask.sln
 ├── src/
-│   ├── OmniTask.Domain/           # Entidades y enums — sin dependencias externas
-│   │   ├── Entities.cs             # User, Contact, Device, WhatsAppTemplate, RefreshToken
-│   │   ├── ActivityEntities.cs     # Activity, Reminder, NotificationLog
+│   ├── OmniTask.Domain/           # Solo enums — sin dependencias externas (§23: sin entidades ORM)
 │   │   └── Enums.cs
 │   │
-│   ├── OmniTask.Application/       # Casos de uso — DTOs, interfaces, servicios
+│   ├── OmniTask.Application/       # Casos de uso — DTOs, interfaces (sin implementación)
 │   │   ├── Dtos.cs
-│   │   ├── Interfaces.cs           # IAuthService, IActivityService, IWhatsAppClient, IPushSender...
-│   │   ├── ApiException.cs
-│   │   └── Services/               # AuthService, ActivityService, ContactService,
-│   │                                # DeviceService, NotificationService
+│   │   ├── Interfaces.cs           # IAuthService, IActivityService, IWhatsAppClient, IPasswordHasher...
+│   │   └── ApiException.cs
 │   │
-│   ├── OmniTask.Infrastructure/    # EF Core, Hangfire, clientes externos
-│   │   ├── Persistence/OmniTaskDbContext.cs
+│   ├── OmniTask.Infrastructure/    # Implementación real — SQL, Hangfire, clientes externos (§23)
+│   │   ├── Services/               # AuthService, ActivityService, ContactService, DeviceService,
+│   │   │                            # NotificationService — ADO.NET puro, sin ORM
 │   │   ├── ExternalServices/       # WhatsAppCloudApiClient, FirebasePushSender
 │   │   └── BackgroundJobs/         # ReminderDispatchJob, UnscheduledDigestJob
 │   │
@@ -3367,13 +3365,66 @@ Todas menos `AuthController` (login/registro) y el webhook llevan `[Authorize]` 
 
 ### Paquetes NuGet principales
 
-`Npgsql.EntityFrameworkCore.PostgreSQL`, `EFCore.NamingConventions` (mapea las columnas `snake_case` de `schema.sql` sin anotar cada una a mano), `Hangfire.AspNetCore` + `Hangfire.PostgreSql`, `Microsoft.AspNetCore.Authentication.JwtBearer`, `Konscious.Security.Cryptography.Argon2` (mismo hashing que ya estaba decidido), `FirebaseAdmin`, `Swashbuckle.AspNetCore`.
+`Npgsql` (ADO.NET directo — ver addendum de la §23, ya no hay ORM de por medio), `Hangfire.AspNetCore` + `Hangfire.PostgreSql`, `Microsoft.AspNetCore.Authentication.JwtBearer`, `Konscious.Security.Cryptography.Argon2` (mismo hashing que ya estaba decidido), `FirebaseAdmin`, `Swashbuckle.AspNetCore`.
 
 ### Antes de desplegar
 
-1. Correr `db/02_add_refresh_tokens_table.sql` contra la base existente.
+1. Correr, en este orden, `db/02_add_refresh_tokens_table.sql` y `db/03_stored_procedures_and_functions.sql` contra la base existente.
 2. Completar `appsettings.Production.json` (gitignored) o las variables de entorno del Application Pool con `ConnectionStrings:Default`, `Jwt:Secret`, `WhatsApp:*` y `Firebase:CredentialsPath` — nunca los valores reales en `appsettings.json`.
 3. Publicar (`dotnet publish -c Release`) y copiar el resultado a la sub-aplicación `/APIOmniTask` de IIS, con el mismo procedimiento que ya usan las otras APIs de este servidor.
+
+---
+
+## §23 — Stored procedures y functions de PostgreSQL
+
+Toda la lógica de negocio de la API — antes repartida entre EF Core/LINQ y el código C# de los servicios — se movió a PostgreSQL: [`db/03_stored_procedures_and_functions.sql`](../db/03_stored_procedures_and_functions.sql) define **funciones** (`fn_*`, invocadas con `SELECT`, para lecturas y escrituras que devuelven datos) y **procedimientos** (`sp_*`, invocados con `CALL`, para efectos secundarios puros: revocar, borrar, marcar). Los servicios de `APIOmniTask/src/OmniTask.Infrastructure/Services/` ya no usan Entity Framework — llaman directo vía ADO.NET (`NpgsqlDataSource`/`NpgsqlCommand`) a estas funciones y procedimientos. El contrato de la API (§6) no cambió.
+
+### Convención de errores
+
+Cada función/procedimiento que necesita señalar un error de negocio usa `RAISE EXCEPTION ... USING ERRCODE = '...'` con un código propio, para que C# traduzca sin depender del texto del mensaje:
+
+| SQLSTATE | Significado | HTTP |
+|---|---|---|
+| `OT001` | recurso no encontrado | 404 |
+| `OT002` | conflicto | 409 |
+| `OT003` | validación inválida | 422 |
+
+`SqlServiceBase` (Infrastructure) centraliza esta traducción en un solo lugar — ningún servicio individual tiene su propio `try/catch` de `PostgresException`.
+
+### Mapeo endpoint → función/procedimiento
+
+| Endpoint | Objeto SQL |
+|---|---|
+| `POST /auth/register` | `fn_register_user` — chequeo de unicidad + INSERT en el mismo statement, cierra la carrera que tenía la versión anterior |
+| `POST /auth/login` | `fn_get_user_by_email` |
+| `POST /auth/refresh` | `fn_rotate_refresh_token` — valida y revoca en un solo UPDATE atómico |
+| `POST /auth/logout` | `sp_revoke_refresh_token` |
+| `GET`/`PATCH /auth/me` | `fn_get_user_by_id` / `fn_update_user_profile` |
+| `POST /activities` | `fn_create_activity` — inserta y genera los reminders automáticos en la misma transacción |
+| `GET /activities` | `fn_list_activities` — filtros + paginación + conteo total en una sola llamada (`COUNT(*) OVER()`) |
+| `GET /activities/unscheduled` | `fn_list_unscheduled_activities` |
+| `GET /activities/{id}` | `fn_get_activity_by_id` + `fn_list_reminders_for_activity` |
+| `PATCH`/`DELETE /activities/{id}` | `fn_update_activity` — la más cargada de reglas: reprogramar, cerrar, regenerar reminders |
+| `POST`/`GET`/`PATCH`/`DELETE /contacts` | `fn_create_contact`, `fn_list_contacts`, `fn_update_contact`, `sp_delete_contact` |
+| `POST`/`GET`/`DELETE /devices` | `fn_upsert_device` (UPSERT nativo), `fn_list_devices`, `sp_delete_device` |
+| `GET /notifications`, `/unread-count` | `fn_list_notifications`, `fn_unread_notification_count` |
+| `PATCH /notifications/{id}/ack`, `POST /ack-all` | `sp_acknowledge_notification`, `sp_acknowledge_all_notifications` |
+| Webhook de WhatsApp | `sp_update_notification_delivery_status` |
+| `ReminderDispatchJob` (Hangfire) | `fn_claim_due_reminders`, `fn_get_reminder_dispatch_info`, `fn_log_notification`, `sp_mark_reminder_sent`/`failed` |
+| `UnscheduledDigestJob` (Hangfire) | `fn_unscheduled_digest_counts` |
+
+### Lo que se corrigió al bajar la lógica a la base
+
+Escribir `fn_update_activity` obligó a resolver dos huecos que tenía la versión anterior del endpoint:
+
+- **`p_clear_starts_at`/`p_clear_ends_at` explícitos**: antes, un valor `NULL` en el request no se podía distinguir de "campo no enviado", así que nunca se podía devolver una actividad al backlog quitándole la fecha. Ahora el cliente lo pide con un flag propio.
+- **El `status` se resincroniza con la fecha** cuando el cliente no lo especifica: asignar fecha por primera vez pasa a `scheduled`; quitarla, a `unscheduled` — antes, "Programar" (§14) dejaba el status desincronizado con la fecha real.
+
+Además, mover el UPSERT de `devices` y el registro de `users` a la base (`fn_upsert_device`, `fn_register_user`) cierra dos carreras que existían al hacerlo en dos pasos desde la aplicación (verificar y luego escribir): ahora la restricción `UNIQUE`/`ON CONFLICT` de Postgres es la única palabra.
+
+### Addendum a la §22: sin ORM
+
+`OmniTask.Infrastructure` ya no depende de `Microsoft.EntityFrameworkCore` ni de un `DbContext` — el único punto de acceso a la base es el `NpgsqlDataSource` (el mismo que ya mapeaba los ENUM nativos de Postgres a enums de C#, §22), inyectado como singleton en `Program.cs`. Cada servicio abre una conexión, llama a su función/procedimiento y mapea el `NpgsqlDataReader` directo al DTO de respuesta.
 
 ---
 
