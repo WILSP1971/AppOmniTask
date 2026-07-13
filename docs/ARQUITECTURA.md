@@ -8,6 +8,8 @@
 > Arquitectura de sistema, esquema de base de datos y guía de desarrollo por fases para una aplicación móvil de calendario, citas y tareas con notificaciones push y confirmaciones automáticas por WhatsApp Business.
 >
 > Versión con diseño completo (diagramas y tablas con estilo): [`docs/arquitectura.html`](./arquitectura.html) — ábrelo directo en el navegador, GitHub no lo renderiza inline.
+>
+> **Nota de lectura:** el backend real es **C#/ASP.NET Core** (§1, §22), no FastAPI/Python. Los fragmentos en Python de las §6-§18 documentan el diseño y las reglas de negocio originales — el contrato (endpoints, JSON, esquema) sigue vigente, pero el código de referencia es el de [`APIOmniTask/`](../APIOmniTask/) y la §22.
 
 ## Índice
 
@@ -32,6 +34,7 @@
 19. [La app y la API en producción](#19--la-app-y-la-api-en-producción)
 20. [Crear el proyecto de Firebase](#20--crear-el-proyecto-de-firebase)
 21. [Integración de WhatsApp Business API, paso a paso](#21--integración-de-whatsapp-business-api-paso-a-paso)
+22. [Backend real: C#/.NET (`APIOmniTask/`)](#22--backend-real-cnet-apiomnitask)
 
 ---
 
@@ -43,11 +46,11 @@ La propuesta original — Flutter, C#/FastAPI, MySQL, FCM y WhatsApp Cloud API �
 
 Correcto para iOS y Android desde un solo código base. Para las vistas de calendario, usar `syncfusion_flutter_calendar` (vistas día/semana/mes con drag-and-drop listas de fábrica) o `table_calendar` si se prefiere una dependencia más ligera. Estado con **Riverpod**; más fácil de testear que Bloc para un equipo pequeño y evita el boilerplate de Provider clásico.
 
-### Backend — FastAPI (Python), no C#
+### Backend — actualizado a ASP.NET Core / C#
 
-> **Recomendación:** consolidar en un solo stack de backend: **Python + FastAPI**. Descartar C#/.NET para esta app.
+> **Decisión final (reemplaza la recomendación original de este apartado):** el backend se construye en **ASP.NET Core / C#**, no FastAPI. Ver el código real en [`APIOmniTask/`](../APIOmniTask/) y el detalle en la §22.
 
-La razón no es preferencia de lenguaje: el núcleo del producto es *trabajo asíncrono e integraciones I/O-bound* — sondear recordatorios cada minuto, llamar a la API de Meta, escuchar webhooks de estado, enviar push. FastAPI + Celery + Redis cubre exactamente ese patrón con librerías maduras (`httpx`, `celery`, `firebase-admin`) y un solo lenguaje entre API y workers. Mantener C# en paralelo solo duplicaría infraestructura sin beneficio funcional. Si el equipo ya tiene fuerte inversión en .NET, ASP.NET Core + Hangfire es una alternativa igualmente válida — pero no mezclar ambos en el mismo servicio.
+La recomendación original de este apartado era FastAPI, por el peso de trabajo asíncrono e integraciones I/O-bound del proyecto (scheduler, webhooks, llamadas a Meta). Esa lógica seguía siendo válida en abstracto, pero el factor que termina decidiendo un stack en producción no es "qué encaja mejor en el papel" sino **quién lo va a operar**: el equipo que mantiene este servidor ya trabaja en C#/.NET, IIS aloja aplicaciones ASP.NET Core de forma nativa (sin el rodeo de `httpPlatformHandler` que describía la §18 para Python), y ya hay otras APIs corriendo ahí con ese mismo patrón. Cambiar de lenguaje no cambia el contrato: los endpoints, los JSON de request/response y el esquema de base de datos de las §3, §6, §7, §9, §16 y §17 siguen siendo los mismos — lo que cambia es la implementación, documentada en la §22.
 
 ### Base de datos — PostgreSQL en vez de MySQL
 
@@ -60,8 +63,8 @@ El requisito de "actividades sin fecha" y recordatorios entre zonas horarias dep
 | Capa | Tecnología | Rol |
 |---|---|---|
 | Móvil | Flutter 3.x | App única iOS/Android, Riverpod, calendario nativo |
-| API | FastAPI (Python 3.12) | REST + auth, orquesta integraciones |
-| Cola / jobs | Redis + Celery Beat | Recordatorios programados, reintentos de envío |
+| API | ASP.NET Core / C# (.NET 8) | REST + auth, orquesta integraciones (§22) |
+| Cola / jobs | Hangfire sobre PostgreSQL | Recordatorios programados, reintentos de envío — sin Redis |
 | Datos | PostgreSQL 16 | Persistencia transaccional |
 | Push | Firebase Cloud Messaging | Notificaciones nativas al dispositivo |
 | Mensajería | WhatsApp Cloud API (Meta) | Confirmaciones y recordatorios por WhatsApp |
@@ -1352,8 +1355,8 @@ workflows:
     scripts:
       - flutter pub get
       - dart run build_runner build --delete-conflicting-outputs
-      - flutter build appbundle --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
-      - flutter build ipa --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
+      - flutter build appbundle --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/APIOmniTask/api/v1
+      - flutter build ipa --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/APIOmniTask/api/v1
     artifacts:
       - build/**/outputs/**/*.aab
       - build/ios/ipa/*.ipa
@@ -3090,12 +3093,14 @@ Los pasos `ssh deploy@staging "docker ..."` del §13 no aplican tal cual a este 
 
 ## §19 — La app y la API en producción
 
-Para que quede explícito: esto es una app móvil (Flutter, §12) que **nunca toca la base de datos directamente**. Todo dato — crear una cita, ver el calendario, marcar una notificación como leída — sale del teléfono como una petición HTTPS hacia la API (FastAPI), y es la API la única que le habla a PostgreSQL, en el mismo servidor Windows del §18. Ese diseño no cambia con esta pregunta; lo que faltaba era la URL real.
+Para que quede explícito: esto es una app móvil (Flutter, §12) que **nunca toca la base de datos directamente**. Todo dato — crear una cita, ver el calendario, marcar una notificación como leída — sale del teléfono como una petición HTTPS hacia la API (ASP.NET Core / C#, §22), y es la API la única que le habla a PostgreSQL, en el mismo servidor Windows del §18. Ese diseño no cambia con esta pregunta; lo que faltaba era la URL real.
 
 ```
-Celular (Flutter)  ──HTTPS──►  https://appsintranet.esculapiosis.com/api/v1  ──local──►  PostgreSQL
-                                (IIS → httpPlatformHandler → Uvicorn, §18)      (127.0.0.1:5432, §18)
+Celular (Flutter)  ──HTTPS──►  https://appsintranet.esculapiosis.com/APIOmniTask/api/v1  ──local──►  PostgreSQL
+                                (IIS → ASP.NET Core Module, §22)                (127.0.0.1:5432, §18)
 ```
+
+`/APIOmniTask` es una sub-aplicación de IIS — el mismo patrón que ya usan las otras APIs de este servidor —, no un sitio propio; IIS antepone y quita ese segmento de forma transparente, la API nunca necesita saber que existe.
 
 Con la red pública y el certificado público confirmados, no hace falta nada especial de confianza de certificados ni VPN en la app — Android e iOS ya confían en un certificado de Let's Encrypt o comercial a través de su almacén de certificados del sistema, sin tocar `network_security_config.xml` ni nada equivalente en iOS.
 
@@ -3106,7 +3111,7 @@ En la §12, `DioClient` apuntaba a `ApiConfig.baseUrl` sin que `ApiConfig` se hu
 ```dart
 // core/config/api_config.dart
 class ApiConfig {
-  static const _prodBaseUrl = 'https://appsintranet.esculapiosis.com/api/v1';
+  static const _prodBaseUrl = 'https://appsintranet.esculapiosis.com/APIOmniTask/api/v1';
 
   // Emulador Android: 10.0.2.2 es el alias que Android usa para "el localhost
   // de la máquina anfitriona". En el simulador de iOS, en cambio, se usa
@@ -3125,7 +3130,7 @@ class ApiConfig {
 flutter run
 
 # para probar el build de un dispositivo contra el servidor real
-flutter run --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
+flutter run --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/APIOmniTask/api/v1
 ```
 
 `String.fromEnvironment` resuelve en tiempo de compilación, no en tiempo de ejecución — por eso el build de release necesita recibir `--dart-define` explícitamente; ya quedó cableado en el pipeline de Codemagic de la §13:
@@ -3135,8 +3140,8 @@ flutter run --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api
     scripts:
       - flutter pub get
       - dart run build_runner build --delete-conflicting-outputs
-      - flutter build appbundle --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
-      - flutter build ipa --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/api/v1
+      - flutter build appbundle --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/APIOmniTask/api/v1
+      - flutter build ipa --release --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/APIOmniTask/api/v1
 ```
 
 ### Un detalle de Android en desarrollo, no en producción
@@ -3280,7 +3285,7 @@ Si este mensaje llega, cualquier falla después está en el backend o en las pla
 ### 7. Configurar el webhook
 
 1. developers.facebook.com → la app → WhatsApp → Configuration → Webhook.
-2. Callback URL: `https://appsintranet.esculapiosis.com/webhooks/whatsapp` — el dominio real confirmado en la §19.
+2. Callback URL: `https://appsintranet.esculapiosis.com/APIOmniTask/webhooks/whatsapp` — el dominio real confirmado en la §19.
 3. Verify token: un valor propio (no lo genera Meta) que el backend compara en el handshake `GET` descrito en la §7.
 4. Suscribirse al campo `messages` — cubre estados de entrega y mensajes entrantes en un solo webhook, tal como se diseñó en la §7.
 
@@ -3303,6 +3308,72 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=...
 Meta empieza con un límite de cuántas conversaciones se pueden *iniciar* en 24 horas, que sube automáticamente con el volumen, la calidad de las conversaciones y la verificación completa de la empresa del paso 1. WhatsApp Manager muestra un indicador de calidad del número (verde/amarillo/rojo); si cae a rojo, Meta puede pausar el envío. Vale la pena vigilarlo junto con las demás métricas de la §13, no es algo que se configure una sola vez y se olvide.
 
 > **Costos:** la Cloud API cobra por conversación de 24 horas según categoría y país, y Meta ajusta estas tarifas con cierta frecuencia — conviene revisar el valor vigente para Colombia en Business Manager → Facturación en el momento de presupuestar, en vez de asumir una cifra fija aquí que puede quedar desactualizada.
+
+---
+
+## §22 — Backend real: C#/.NET (`APIOmniTask/`)
+
+El código vive en [`APIOmniTask/`](../APIOmniTask/) en la raíz del repo, junto a `docs/` y `db/`. Es la implementación real de los endpoints, reglas de negocio y esquema que ya describen las §3, §6, §7, §9, §16 y §17 — ese contrato no cambió, solo el lenguaje. IIS ya aloja otras APIs en este servidor con el mismo patrón de sub-aplicación, así que esa parte de la configuración no se repite aquí.
+
+### Estructura (Clean Architecture, 4 proyectos)
+
+```
+APIOmniTask/
+├── OmniTask.sln
+├── src/
+│   ├── OmniTask.Domain/           # Entidades y enums — sin dependencias externas
+│   │   ├── Entities.cs             # User, Contact, Device, WhatsAppTemplate, RefreshToken
+│   │   ├── ActivityEntities.cs     # Activity, Reminder, NotificationLog
+│   │   └── Enums.cs
+│   │
+│   ├── OmniTask.Application/       # Casos de uso — DTOs, interfaces, servicios
+│   │   ├── Dtos.cs
+│   │   ├── Interfaces.cs           # IAuthService, IActivityService, IWhatsAppClient, IPushSender...
+│   │   ├── ApiException.cs
+│   │   └── Services/               # AuthService, ActivityService, ContactService,
+│   │                                # DeviceService, NotificationService
+│   │
+│   ├── OmniTask.Infrastructure/    # EF Core, Hangfire, clientes externos
+│   │   ├── Persistence/OmniTaskDbContext.cs
+│   │   ├── ExternalServices/       # WhatsAppCloudApiClient, FirebasePushSender
+│   │   └── BackgroundJobs/         # ReminderDispatchJob, UnscheduledDigestJob
+│   │
+│   └── OmniTask.Api/               # Controllers, Program.cs, seguridad, config
+│       ├── Controllers/            # Auth, Activities, Contacts+Devices, Notifications, WhatsAppWebhook
+│       ├── Security.cs             # Argon2PasswordHasher, JwtTokenFactory, ApiExceptionMiddleware
+│       ├── Program.cs
+│       ├── appsettings.json        # solo placeholders — secretos reales fuera del repo
+│       └── web.config
+```
+
+### Endpoints → controlador
+
+| Recurso | Controlador | Endpoints |
+|---|---|---|
+| Auth | `AuthController` | `POST /auth/register`, `/login`, `/refresh`, `/logout`, `GET /auth/me`, `PATCH /auth/me` |
+| Activities | `ActivitiesController` | CRUD completo + `GET /activities/unscheduled` |
+| Contacts | `ContactsController` | CRUD completo |
+| Devices | `DevicesController` | `POST/GET/DELETE /devices` |
+| Notifications | `NotificationsController` | `GET /notifications`, `/unread-count`, `PATCH /{id}/ack`, `POST /ack-all` |
+| WhatsApp | `WhatsAppWebhookController` | `GET`/`POST /webhooks/whatsapp` |
+
+Todas menos `AuthController` (login/registro) y el webhook llevan `[Authorize]` — el `userId` sale siempre del claim `sub` del JWT (`User.GetUserId()`), nunca de un parámetro que llegue en la URL o el body.
+
+### Tres decisiones que simplifican el despliegue en este servidor
+
+- **Hangfire reemplaza Celery + Redis** (`ReminderDispatchJob`, `UnscheduledDigestJob`): mismo `SELECT ... FOR UPDATE SKIP LOCKED` para no duplicar envíos, pero corriendo dentro del propio proceso de IIS — sin un worker ni un scheduler aparte que mantener.
+- **Los refresh tokens viven en la tabla `refresh_tokens`** (Postgres), no en Redis — aplicar [`db/02_add_refresh_tokens_table.sql`](../db/02_add_refresh_tokens_table.sql) sobre la base ya existente antes de desplegar esta API.
+- **Sin Redis/Memurai en absoluto**: entre Hangfire y los refresh tokens, PostgreSQL es el único motor de datos que este backend necesita.
+
+### Paquetes NuGet principales
+
+`Npgsql.EntityFrameworkCore.PostgreSQL`, `EFCore.NamingConventions` (mapea las columnas `snake_case` de `schema.sql` sin anotar cada una a mano), `Hangfire.AspNetCore` + `Hangfire.PostgreSql`, `Microsoft.AspNetCore.Authentication.JwtBearer`, `Konscious.Security.Cryptography.Argon2` (mismo hashing que ya estaba decidido), `FirebaseAdmin`, `Swashbuckle.AspNetCore`.
+
+### Antes de desplegar
+
+1. Correr `db/02_add_refresh_tokens_table.sql` contra la base existente.
+2. Completar `appsettings.Production.json` (gitignored) o las variables de entorno del Application Pool con `ConnectionStrings:Default`, `Jwt:Secret`, `WhatsApp:*` y `Firebase:CredentialsPath` — nunca los valores reales en `appsettings.json`.
+3. Publicar (`dotnet publish -c Release`) y copiar el resultado a la sub-aplicación `/APIOmniTask` de IIS, con el mismo procedimiento que ya usan las otras APIs de este servidor.
 
 ---
 

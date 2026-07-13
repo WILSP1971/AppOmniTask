@@ -126,6 +126,17 @@ CREATE INDEX idx_notification_log_provider_message_id ON notification_log (provi
 -- Alimenta /notifications/unread-count (§17) sin escanear toda la tabla
 CREATE INDEX idx_notification_log_unread ON notification_log (user_id) WHERE acknowledged_at IS NULL;
 
+-- refresh_tokens (backend C#/.NET, ver db/02_add_refresh_tokens_table.sql para
+-- aplicarla sobre una base ya existente): reemplaza el store de Redis del
+-- diseño original — un motor de datos menos que operar en el servidor Windows.
+CREATE TABLE refresh_tokens (
+    jti UUID PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    revoked_at TIMESTAMPTZ
+);
+CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens (user_id);
+
 -- updated_at al día aunque algo distinto a la API toque la fila directamente
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
