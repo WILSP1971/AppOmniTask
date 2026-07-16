@@ -13,7 +13,7 @@ public class FirebasePushSender : IPushSender
         {
             Token = fcmToken,
             Notification = new Notification { Title = title, Body = body },
-            Data = data,
+            Data = new Dictionary<string, string>(data),
         };
 
         try

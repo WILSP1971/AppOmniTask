@@ -26,19 +26,6 @@ public abstract class SqlServiceBase
 
     protected SqlServiceBase(NpgsqlDataSource dataSource) => DataSource = dataSource;
 
-    protected async Task<T> RunAsync<T>(Func<NpgsqlConnection, Task<T>> action)
-    {
-        await using var conn = await DataSource.OpenConnectionAsync();
-        try
-        {
-            return await action(conn);
-        }
-        catch (PostgresException ex)
-        {
-            throw PostgresExceptionMapper.TryMap(ex) ?? ex;
-        }
-    }
-
     protected async Task RunAsync(Func<NpgsqlConnection, Task> action)
     {
         await using var conn = await DataSource.OpenConnectionAsync();
@@ -48,7 +35,24 @@ public abstract class SqlServiceBase
         }
         catch (PostgresException ex)
         {
-            throw PostgresExceptionMapper.TryMap(ex) ?? ex;
+            var mapped = PostgresExceptionMapper.TryMap(ex);
+            if (mapped is not null) throw mapped;
+            throw;
+        }
+    }
+
+    protected async Task<T> RunAsync<T>(Func<NpgsqlConnection, Task<T>> action)
+    {
+        await using var conn = await DataSource.OpenConnectionAsync();
+        try
+        {
+            return await action(conn);
+        }
+        catch (PostgresException ex)
+        {
+            var mapped = PostgresExceptionMapper.TryMap(ex);
+            if (mapped is not null) throw mapped;
+            throw;
         }
     }
 }
