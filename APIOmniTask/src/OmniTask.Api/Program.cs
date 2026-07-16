@@ -119,9 +119,17 @@ if (app.Environment.IsDevelopment())
 
 app.MapControllers();
 
-RecurringJob.AddOrUpdate<ReminderDispatchJob>(
-    "dispatch-due-reminders", job => job.DispatchDueRemindersAsync(), "*/1 * * * *");
-RecurringJob.AddOrUpdate<UnscheduledDigestJob>(
-    "dispatch-unscheduled-digest", job => job.RunAsync(), Cron.Daily(8));
+// Se registran los recurring jobs con el API basado en servicios
+// (IRecurringJobManager), no con el estático RecurringJob: este último
+// depende de JobStorage.Current, que aún no está inicializado en este punto
+// del arranque y lanzaba InvalidOperationException al iniciar bajo IIS.
+using (var scope = app.Services.CreateScope())
+{
+    var recurringJobs = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+    recurringJobs.AddOrUpdate<ReminderDispatchJob>(
+        "dispatch-due-reminders", job => job.DispatchDueRemindersAsync(), "*/1 * * * *");
+    recurringJobs.AddOrUpdate<UnscheduledDigestJob>(
+        "dispatch-unscheduled-digest", job => job.RunAsync(), Cron.Daily(8));
+}
 
 app.Run();
