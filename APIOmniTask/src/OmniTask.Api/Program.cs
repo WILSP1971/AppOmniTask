@@ -40,7 +40,7 @@ builder.Services.AddSingleton(dataSource);
 
 // Hangfire reemplaza Celery+Redis (§8) usando el mismo Postgres como storage
 // de jobs — un motor menos que operar en el servidor Windows (§18).
-builder.Services.AddHangfire(config => config.UsePostgreSqlStorage(connectionString));
+builder.Services.AddHangfire(config => config.UsePostgreSqlStorage(options => options.UseNpgsqlConnection(connectionString)));
 builder.Services.AddHangfireServer();
 
 builder.Services.AddScoped<IAuthService, AuthService>();
