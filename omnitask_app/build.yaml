@@ -1,0 +1,8 @@
+targets:
+  $default:
+    builders:
+      json_serializable:
+        options:
+          # Toda la API (§6, §9, §16, §17, §19, §23) usa snake_case — se
+          # configura una sola vez aquí en vez de anotar cada modelo.
+          field_rename: snake

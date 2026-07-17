@@ -1,0 +1,23 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+pubspec.lock
+
+# Generado por freezed/json_serializable/riverpod_generator — se regenera
+# con `dart run build_runner build --delete-conflicting-outputs`.
+*.freezed.dart
+*.g.dart
+
+# Firebase — credenciales específicas del proyecto (§20), nunca al repo.
+lib/firebase_options.dart
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+
+# IDE
+.idea/
+*.iml

@@ -36,6 +36,7 @@
 21. [Integración de WhatsApp Business API, paso a paso](#21--integración-de-whatsapp-business-api-paso-a-paso)
 22. [Backend real: C#/.NET (`APIOmniTask/`)](#22--backend-real-cnet-apiomnitask)
 23. [Stored procedures y functions de PostgreSQL](#23--stored-procedures-y-functions-de-postgresql)
+24. [App móvil real: Flutter (`omnitask_app/`)](#24--app-móvil-real-flutter-omnitask_app)
 
 ---
 
@@ -3425,6 +3426,57 @@ Además, mover el UPSERT de `devices` y el registro de `users` a la base (`fn_up
 ### Addendum a la §22: sin ORM
 
 `OmniTask.Infrastructure` ya no depende de `Microsoft.EntityFrameworkCore` ni de un `DbContext` — el único punto de acceso a la base es el `NpgsqlDataSource` (el mismo que ya mapeaba los ENUM nativos de Postgres a enums de C#, §22), inyectado como singleton en `Program.cs`. Cada servicio abre una conexión, llama a su función/procedimiento y mapea el `NpgsqlDataReader` directo al DTO de respuesta.
+
+---
+
+## §24 — App móvil real: Flutter (`omnitask_app/`)
+
+El código vive en [`omnitask_app/`](../omnitask_app/) en la raíz del repo, junto a `APIOmniTask/`, `db/` y `docs/`. Es la implementación real de todo lo diseñado en las §12, §14, §15, §16, §17, §19 y §20 — el mismo Riverpod + go_router + Dio ya documentados, ahora como archivos de verdad, apuntando a la API real de la §22/§23.
+
+### Estructura
+
+```
+omnitask_app/
+├── pubspec.yaml
+├── build.yaml                      # json_serializable en snake_case global (§6, §23) —
+│                                    # una sola configuración en vez de anotar cada modelo
+├── lib/
+│   ├── main.dart                    # ProviderContainer manual: inicializa notificaciones
+│   │                                # locales y el listener de push antes de runApp
+│   ├── core/
+│   │   ├── config/api_config.dart    # baseUrl real (§19)
+│   │   ├── network/dio_client.dart   # interceptor de refresh
+│   │   ├── storage/secure_token_storage.dart
+│   │   └── router/app_router.dart    # GoRouterRefreshStream + redirect + deep link
+│   ├── models/                      # 10 modelos freezed — Activity, User, Contact,
+│   │                                # Device, NotificationItem, AuthState (sealed), etc.
+│   └── features/
+│       ├── auth/                     # AuthNotifier, login, registro
+│       ├── calendar/                 # SfCalendar, detalle, edición (crear/editar/programar)
+│       ├── backlog/                  # pendientes por programar
+│       ├── contacts/                 # repositorio para el picker con debounce
+│       ├── notifications/            # registro de dispositivo, push en primer plano, bandeja
+│       └── settings/                 # perfil, preferencias, dispositivos
+```
+
+### Lo que exigió el cambio de la §23 en el lado del cliente
+
+El endpoint `PATCH /activities/{id}` ganó `clear_starts_at`/`clear_ends_at` explícitos al bajar la lógica a `fn_update_activity` (§23) — `ActivityRepository.update()` y la pantalla de edición ya se actualizaron para mandarlos: el switch "Sin fecha por ahora" activado envía `clear_starts_at: true` en vez de simplemente omitir `starts_at`, que antes no tenía forma de distinguirse de "no tocar este campo".
+
+### Detalles de implementación que vale la pena señalar
+
+- **`main.dart` usa un `ProviderContainer` manual** (`UncontrolledProviderScope`) en vez del `ProviderScope` simple del diseño original — hace falta para poder `await` la inicialización de `flutter_local_notifications` y leer `pushMessageListenerProvider` antes de `runApp`, algo que un `ProviderScope` declarativo no permite expresar directamente.
+- **`ContactPickerField`** no usa el widget `Autocomplete` de Flutter (su `optionsBuilder` es síncrono) — es un `TextField` con `Timer` de debounce propio y una lista desplegable simple, para poder buscar contra `GET /contacts?search=` de forma asíncrona.
+- **Validación agregada en el formulario de actividad**: si "Sin fecha por ahora" queda desactivado pero no se selecciona ninguna fecha, ahora avisa explícitamente en vez de enviar un PATCH que no cambia nada en silencio.
+
+### Antes de compilar
+
+1. `flutter pub get`
+2. `dart run build_runner build --delete-conflicting-outputs` — genera los `*.freezed.dart`/`*.g.dart` de los 10 modelos y los providers `@riverpod` (ninguno está en el repo, se regeneran localmente).
+3. `flutterfire configure` contra el proyecto de Firebase real (§20) para generar `lib/firebase_options.dart`, y descomentar `await Firebase.initializeApp()` en `main.dart`.
+4. `flutter build appbundle`/`build ipa --release --dart-define=API_BASE_URL=...` (§13, §19) para el build de producción.
+
+No hay SDK de Flutter/Dart disponible en este entorno de trabajo, así que estos cuatro pasos no se pudieron correr aquí — quedan como el primer chequeo real antes de considerar esto terminado.
 
 ---
 
