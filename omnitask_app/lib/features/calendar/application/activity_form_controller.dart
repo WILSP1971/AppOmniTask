@@ -20,7 +20,9 @@ class ActivityFormController extends _$ActivityFormController {
   Future<Activity?> create(ActivityDraft draft) =>
       _submit(() => ref.read(activityRepositoryProvider).create(draft));
 
-  Future<Activity?> update(
+  // Nombrado updateActivity, no update: AsyncNotifierBase ya define un método
+  // update(cb) propio de Riverpod — reusar ese nombre choca con esa firma.
+  Future<Activity?> updateActivity(
     String id, {
     String? title,
     String? description,

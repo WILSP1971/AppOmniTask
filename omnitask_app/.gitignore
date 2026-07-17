@@ -21,3 +21,7 @@ ios/Runner/GoogleService-Info.plist
 # IDE
 .idea/
 *.iml
+
+# Específico de cada máquina / auto-generado por el toolchain de Flutter.
+android/local.properties
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java

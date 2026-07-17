@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,31 +17,22 @@ import '../../features/settings/presentation/notification_preferences_screen.dar
 import '../../features/settings/presentation/profile_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 
-/// Adapta el Stream del provider a un Listenable (§15) para que go_router
-/// reevalúe `redirect` cada vez que AuthState cambia — sin esto, pasar de
-/// unauthenticated a authenticated tras un login exitoso no movería a nadie
-/// de pantalla hasta la siguiente navegación manual.
-class GoRouterRefreshStream extends ChangeNotifier {
-  GoRouterRefreshStream(Stream<dynamic> stream) {
-    notifyListeners();
-    _subscription = stream.asBroadcastStream().listen((_) => notifyListeners());
-  }
-
-  late final StreamSubscription<dynamic> _subscription;
-
-  @override
-  void dispose() {
-    _subscription.cancel();
-    super.dispose();
+/// Puente entre authNotifierProvider y el Listenable que go_router necesita
+/// (§15): AsyncNotifierProvider no expone un Stream propio para observar
+/// desde fuera de Riverpod, así que se usa ref.listen para llamar
+/// notifyListeners() en cada cambio — sin esto, pasar de unauthenticated a
+/// authenticated tras un login exitoso no movería a nadie de pantalla hasta
+/// la siguiente navegación manual.
+class GoRouterRefreshNotifier extends ChangeNotifier {
+  GoRouterRefreshNotifier(Ref ref) {
+    ref.listen(authNotifierProvider, (previous, next) => notifyListeners());
   }
 }
 
 final goRouterProvider = Provider<GoRouter>((ref) {
-  final authNotifier = ref.watch(authNotifierProvider.notifier);
-
   final router = GoRouter(
     initialLocation: '/',
-    refreshListenable: GoRouterRefreshStream(authNotifier.stream),
+    refreshListenable: GoRouterRefreshNotifier(ref),
     redirect: (context, state) {
       final auth = ref.read(authNotifierProvider).valueOrNull;
       final isAuthRoute =

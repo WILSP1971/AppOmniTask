@@ -43,10 +43,11 @@ final dioClientProvider = Provider<Dio>((ref) => DioClient(ref).instance);
 /// (§6) en vez de mostrar un genérico "Error 401" / "Error 500".
 String mapApiError(Object error) {
   if (error is DioException) {
-    final message = error.response?.data is Map
-        ? (error.response?.data as Map)['error']?['message'] as String?
-        : null;
-    if (message != null) return message;
+    final data = error.response?.data;
+    if (data is Map) {
+      final message = data['error']?['message'];
+      if (message is String) return message;
+    }
   }
   return 'Algo falló. Intenta de nuevo.';
 }

@@ -108,7 +108,7 @@ class _StatusChip extends StatelessWidget {
       'cancelled' => ('Cancelada', Colors.red),
       _ => ('Pendiente por programar', Colors.orange),
     };
-    return Chip(label: Text(label), backgroundColor: color.withOpacity(0.15));
+    return Chip(label: Text(label), backgroundColor: color.withValues(alpha: 0.15));
   }
 }
 
@@ -121,7 +121,7 @@ class _UnscheduledBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.1),
+        color: Colors.orange.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: const Row(

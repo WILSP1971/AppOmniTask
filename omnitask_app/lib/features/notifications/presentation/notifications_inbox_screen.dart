@@ -64,7 +64,7 @@ class _NotificationTile extends ConsumerWidget {
 
     return ListTile(
       tileColor:
-          isUnread ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3) : null,
+          isUnread ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
       leading: Icon(
         item.channel == 'whatsapp' ? Icons.chat_outlined : Icons.notifications_outlined,
       ),

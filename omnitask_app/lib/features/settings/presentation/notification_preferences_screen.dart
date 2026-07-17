@@ -47,23 +47,16 @@ class _NotificationPreferencesScreenState extends ConsumerState<NotificationPref
       body: ListView(
         children: [
           const _SectionLabel('Canal por defecto'),
-          RadioListTile<String>(
-            value: 'push',
+          RadioGroup<String>(
             groupValue: _channel,
-            title: const Text('Solo push'),
             onChanged: (v) => setState(() => _channel = v),
-          ),
-          RadioListTile<String>(
-            value: 'whatsapp',
-            groupValue: _channel,
-            title: const Text('Solo WhatsApp'),
-            onChanged: (v) => setState(() => _channel = v),
-          ),
-          RadioListTile<String>(
-            value: 'both',
-            groupValue: _channel,
-            title: const Text('Push y WhatsApp'),
-            onChanged: (v) => setState(() => _channel = v),
+            child: const Column(
+              children: [
+                RadioListTile<String>(value: 'push', title: Text('Solo push')),
+                RadioListTile<String>(value: 'whatsapp', title: Text('Solo WhatsApp')),
+                RadioListTile<String>(value: 'both', title: Text('Push y WhatsApp')),
+              ],
+            ),
           ),
           const Divider(),
           const _SectionLabel('¿Con cuánta anticipación?'),

@@ -150,7 +150,7 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
     final controller = ref.read(activityFormControllerProvider.notifier);
 
     final saved = _isEditing
-        ? await controller.update(
+        ? await controller.updateActivity(
             widget.activityId!,
             title: _titleController.text.trim(),
             description: description,
