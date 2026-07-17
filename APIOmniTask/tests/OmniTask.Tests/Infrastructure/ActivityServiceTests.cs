@@ -59,6 +59,24 @@ public class ActivityServiceTests
         EndsAt: startsAt?.AddHours(1),
         Location: "Sala 1");
 
+    // Regresión: fn_list_activities(uuid, timestamptz, timestamptz, activity_type,
+    // activity_status, int, int) — GET /activities sin query params manda type/status
+    // en null. AddWithValue(DBNull.Value) pierde el tipo del parámetro al boxear;
+    // sin DataTypeName explícito (ActivityService.EnumParam) esto puede viajar como
+    // "unknown" en vez de activity_type/activity_status.
+    [SkippableFact]
+    public async Task ListAsync_de_un_usuario_sin_actividades_devuelve_lista_vacia()
+    {
+        Skip.IfNot(_fixture.IsAvailable, "No hay Postgres alcanzable — ver TEST_DATABASE_URL");
+
+        var userId = await CreateTestUserAsync();
+
+        var result = await _activityService.ListAsync(userId, null, null, null, null, 1, 50);
+
+        Assert.Equal(0, result.Total);
+        Assert.Empty(result.Items);
+    }
+
     [SkippableFact]
     public async Task CreateAsync_con_fecha_queda_scheduled_y_genera_reminders()
     {

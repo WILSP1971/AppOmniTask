@@ -39,8 +39,8 @@ public class ActivityService : SqlServiceBase, IActivityService
             cmd.Parameters.AddWithValue("user_id", userId);
             cmd.Parameters.AddWithValue("from", (object?)from ?? DBNull.Value);
             cmd.Parameters.AddWithValue("to", (object?)to ?? DBNull.Value);
-            cmd.Parameters.AddWithValue("type", type is null ? DBNull.Value : EnumParsing.Parse<ActivityType>(type, "type"));
-            cmd.Parameters.AddWithValue("status", status is null ? DBNull.Value : EnumParsing.Parse<ActivityStatus>(status, "status"));
+            cmd.Parameters.Add(EnumParam("type", "activity_type", type is null ? null : EnumParsing.Parse<ActivityType>(type, "type")));
+            cmd.Parameters.Add(EnumParam("status", "activity_status", status is null ? null : EnumParsing.Parse<ActivityStatus>(status, "status")));
             cmd.Parameters.AddWithValue("page", page);
             cmd.Parameters.AddWithValue("limit", limit);
 
@@ -119,7 +119,7 @@ public class ActivityService : SqlServiceBase, IActivityService
             cmd.Parameters.AddWithValue("clear_starts_at", request.ClearStartsAt);
             cmd.Parameters.AddWithValue("ends_at", (object?)request.EndsAt ?? DBNull.Value);
             cmd.Parameters.AddWithValue("clear_ends_at", request.ClearEndsAt);
-            cmd.Parameters.AddWithValue("status", request.Status is null ? DBNull.Value : EnumParsing.Parse<ActivityStatus>(request.Status, "status"));
+            cmd.Parameters.Add(EnumParam("status", "activity_status", request.Status is null ? null : EnumParsing.Parse<ActivityStatus>(request.Status, "status")));
             cmd.Parameters.AddWithValue("location", (object?)request.Location ?? DBNull.Value);
 
             await using var reader = await cmd.ExecuteReaderAsync();
@@ -156,4 +156,11 @@ public class ActivityService : SqlServiceBase, IActivityService
         var ordinal = reader.GetOrdinal(column);
         return reader.IsDBNull(ordinal) ? null : reader.GetFieldValue<DateTimeOffset>(ordinal);
     }
+
+    // AddWithValue no puede inferir el tipo de Postgres a partir de un DBNull.Value
+    // desnudo (pierde el tipo al boxear). DataTypeName explícito hace que el
+    // parámetro siempre viaje como activity_type/activity_status, tenga o no
+    // valor, en vez de depender de cómo Postgres resuelva un "unknown" nulo.
+    private static NpgsqlParameter EnumParam(string name, string pgTypeName, object? value) =>
+        new(name, value ?? DBNull.Value) { DataTypeName = pgTypeName };
 }
