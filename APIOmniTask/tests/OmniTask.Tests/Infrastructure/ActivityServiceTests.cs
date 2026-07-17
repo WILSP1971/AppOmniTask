@@ -110,8 +110,14 @@ public class ActivityServiceTests
         var reloaded = await _activityService.GetByIdAsync(userId, created.Id);
         Assert.Equal("scheduled", reloaded.Status);
         Assert.Equal(newStart, reloaded.StartsAt);
-        Assert.All(reloaded.Reminders!, r => Assert.Equal("pending", r.Status));
-        Assert.All(reloaded.Reminders!, r => Assert.True(r.RemindAt < newStart));
+
+        // fn_update_activity no borra los reminders viejos al reprogramar: los
+        // marca 'failed' e inserta unos nuevos 'pending' — la lista trae ambos.
+        var pendingReminders = reloaded.Reminders!.Where(r => r.Status == "pending").ToList();
+        var failedReminders = reloaded.Reminders!.Where(r => r.Status == "failed").ToList();
+        Assert.NotEmpty(pendingReminders);
+        Assert.NotEmpty(failedReminders);
+        Assert.All(pendingReminders, r => Assert.True(r.RemindAt < newStart));
     }
 
     [SkippableFact]
