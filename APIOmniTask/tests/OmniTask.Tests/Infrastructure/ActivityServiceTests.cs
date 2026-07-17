@@ -47,6 +47,9 @@ public class ActivityServiceTests
         return registered.User.Id;
     }
 
+    private static DateTimeOffset TruncateToMicroseconds(DateTimeOffset value) =>
+        new(value.Ticks - (value.Ticks % 10), value.Offset);
+
     private static ActivityCreateRequest NewMeetingRequest(DateTimeOffset? startsAt) => new(
         Type: "meeting",
         Title: "Reunión de prueba",
@@ -96,7 +99,10 @@ public class ActivityServiceTests
         var originalStart = DateTimeOffset.UtcNow.AddDays(2);
         var created = await _activityService.CreateAsync(userId, NewMeetingRequest(originalStart));
 
-        var newStart = DateTimeOffset.UtcNow.AddDays(5);
+        // Postgres timestamptz solo guarda precisión de microsegundos; truncar
+        // aquí evita que el round-trip pierda los últimos ticks (100ns) y el
+        // Assert.Equal de más abajo falle por una diferencia de sub-microsegundo.
+        var newStart = TruncateToMicroseconds(DateTimeOffset.UtcNow.AddDays(5));
         await _activityService.UpdateAsync(userId, created.Id, new ActivityUpdateRequest(
             Title: null, Description: null, StartsAt: newStart, ClearStartsAt: false,
             EndsAt: newStart.AddHours(1), ClearEndsAt: false, Status: null, Location: null));
