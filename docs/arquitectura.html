@@ -1908,19 +1908,26 @@ jobs:
         </div>
 
         <h3>Flutter — CI en cada pull request</h3>
+        <p>Ya es un archivo real: <code>.github/workflows/flutter-ci.yml</code>, no solo el ejemplo de esta sección — con <code>working-directory: omnitask_app</code> (el nombre real del paquete, §24) y <code>flutter-version: "3.44.6"</code>, la misma con la que se verificaron <code>flutter analyze</code> y las 21 pruebas de la sección anterior. Correr los cuatro pasos localmente desde un checkout limpio (sin <code>.dart_tool/</code> ni los <code>*.freezed.dart</code>/<code>*.g.dart</code> generados) confirma que el workflow, tal como está escrito, pasa de punta a punta.</p>
         <pre class="code"># .github/workflows/flutter-ci.yml
 name: Flutter CI
 on:
   pull_request:
-    paths: ["mobile/**"]
+    paths: ["omnitask_app/**"]
+  push:
+    branches: [main]
+    paths: ["omnitask_app/**"]
 
 jobs:
-  analyze:
+  analyze-and-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: omnitask_app
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
-        with: { flutter-version: "3.24.0", channel: "stable" }
+        with: { flutter-version: "3.44.6", channel: "stable" }
       - run: flutter pub get
       - run: dart run build_runner build --delete-conflicting-outputs
       - run: flutter analyze
@@ -3891,6 +3898,6 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=...</pre>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §24 actualizada: omnitask_app/ verificado con flutter analyze (0 problemas) tras corregir 3 bugs reales · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §13 actualizada: .github/workflows/flutter-ci.yml ya existe como archivo real, verificado desde un checkout limpio · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>

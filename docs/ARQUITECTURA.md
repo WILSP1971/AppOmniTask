@@ -1319,20 +1319,28 @@ jobs:
 
 ### Flutter — CI en cada pull request
 
+Ya es un archivo real: [`.github/workflows/flutter-ci.yml`](../.github/workflows/flutter-ci.yml), no solo el ejemplo de esta sección — con `working-directory: omnitask_app` (el nombre real del paquete, §24) y `flutter-version: "3.44.6"`, la misma con la que se verificaron `flutter analyze` y las 21 pruebas de la sección anterior. Correr los cuatro pasos localmente desde un checkout limpio (sin `.dart_tool/` ni los `*.freezed.dart`/`*.g.dart` generados) confirma que el workflow, tal como está escrito, pasa de punta a punta.
+
 ```yaml
 # .github/workflows/flutter-ci.yml
 name: Flutter CI
 on:
   pull_request:
-    paths: ["mobile/**"]
+    paths: ["omnitask_app/**"]
+  push:
+    branches: [main]
+    paths: ["omnitask_app/**"]
 
 jobs:
-  analyze:
+  analyze-and-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: omnitask_app
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
-        with: { flutter-version: "3.24.0", channel: "stable" }
+        with: { flutter-version: "3.44.6", channel: "stable" }
       - run: flutter pub get
       - run: dart run build_runner build --delete-conflicting-outputs
       - run: flutter analyze
