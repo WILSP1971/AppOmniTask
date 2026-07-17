@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -16,6 +17,10 @@ class DeviceRegistration extends _$DeviceRegistration {
   FutureOr<void> build() {}
 
   Future<void> registerCurrentDevice() async {
+    // Sin proyecto Firebase configurado (§20) no hay app por defecto — login
+    // no debe fallar por eso, solo se omite el registro del dispositivo.
+    if (Firebase.apps.isEmpty) return;
+
     final token = await FirebaseMessaging.instance.getToken();
     if (token == null) return;
 

@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -13,5 +14,7 @@ Future<List<Device>> myDevices(MyDevicesRef ref) {
 
 @riverpod
 Future<String?> currentFcmToken(CurrentFcmTokenRef ref) {
+  // Sin proyecto Firebase configurado (§20) no hay app por defecto.
+  if (Firebase.apps.isEmpty) return Future.value(null);
   return FirebaseMessaging.instance.getToken();
 }

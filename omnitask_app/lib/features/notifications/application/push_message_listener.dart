@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -14,6 +15,11 @@ part 'push_message_listener.g.dart';
 class PushMessageListener extends _$PushMessageListener {
   @override
   void build() {
+    // Sin firebase_options.dart (generado por `flutterfire configure` contra
+    // un proyecto Firebase real, §20) no hay app por defecto — suscribirse
+    // igual haría que FirebaseMessaging.instance lance en el arranque. El
+    // resto de la app (calendario, contactos, backlog) no depende de esto.
+    if (Firebase.apps.isEmpty) return;
     FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
   }
 

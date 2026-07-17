@@ -13,16 +13,16 @@ class LocalNotificationsService {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosInit = DarwinInitializationSettings();
     await _plugin.initialize(
-      const InitializationSettings(android: androidInit, iOS: iosInit),
+      settings: const InitializationSettings(android: androidInit, iOS: iosInit),
     );
   }
 
   Future<void> show(RemoteMessage message) {
     return _plugin.show(
-      message.hashCode,
-      message.notification?.title ?? 'OmniTask',
-      message.notification?.body ?? '',
-      const NotificationDetails(
+      id: message.hashCode,
+      title: message.notification?.title ?? 'OmniTask',
+      body: message.notification?.body ?? '',
+      notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails('reminders', 'Recordatorios'),
       ),
       payload: message.data['activity_id'] as String?,

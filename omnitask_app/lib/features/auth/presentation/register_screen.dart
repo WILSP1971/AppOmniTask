@@ -97,7 +97,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           email: _emailController.text.trim(),
           password: _passwordController.text,
           phoneE164: _phoneController.text.trim(),
-          timezone: timezone,
+          timezone: timezone.identifier,
         );
   }
 }

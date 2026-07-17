@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -78,15 +79,19 @@ final goRouterProvider = Provider<GoRouter>((ref) {
   // Cubre los dos casos reales de deep link desde un push (§12, §17): la app
   // ya estaba en segundo plano, o el tap es lo que la abre desde cero
   // (cold start) — omitir el segundo es el bug clásico de "solo funciona a veces".
-  FirebaseMessaging.onMessageOpenedApp.listen((message) {
-    final activityId = message.data['activity_id'];
-    if (activityId != null) router.push('/activities/$activityId');
-  });
+  // Sin firebase_options.dart (§20) no hay app por defecto y estas llamadas
+  // lanzarían en el primer frame; se omiten hasta que Firebase esté configurado.
+  if (Firebase.apps.isNotEmpty) {
+    FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      final activityId = message.data['activity_id'];
+      if (activityId != null) router.push('/activities/$activityId');
+    });
 
-  FirebaseMessaging.instance.getInitialMessage().then((message) {
-    final activityId = message?.data['activity_id'];
-    if (activityId != null) router.push('/activities/$activityId');
-  });
+    FirebaseMessaging.instance.getInitialMessage().then((message) {
+      final activityId = message?.data['activity_id'];
+      if (activityId != null) router.push('/activities/$activityId');
+    });
+  }
 
   return router;
 });

@@ -87,7 +87,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _redetectTimezone() async {
     final detected = await FlutterTimezone.getLocalTimezone();
-    setState(() => _timezone = detected);
+    setState(() => _timezone = detected.identifier);
   }
 
   Future<void> _submit() async {
