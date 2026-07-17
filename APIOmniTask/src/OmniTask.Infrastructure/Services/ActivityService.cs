@@ -18,7 +18,7 @@ public class ActivityService : SqlServiceBase, IActivityService
         cmd.CommandText = "SELECT * FROM fn_create_activity(@user_id, @contact_id, @type, @title, @description, @starts_at, @ends_at, @location)";
         cmd.Parameters.AddWithValue("user_id", userId);
         cmd.Parameters.AddWithValue("contact_id", (object?)request.ContactId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("type", EnumParsing.Parse<ActivityType>(request.Type, "type"));
+        cmd.Parameters.Add(EnumParam("type", "activity_type", EnumParsing.Parse<ActivityType>(request.Type, "type")));
         cmd.Parameters.AddWithValue("title", request.Title);
         cmd.Parameters.AddWithValue("description", (object?)request.Description ?? DBNull.Value);
         cmd.Parameters.AddWithValue("starts_at", (object?)request.StartsAt ?? DBNull.Value);

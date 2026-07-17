@@ -17,7 +17,7 @@ public class DeviceService : SqlServiceBase, IDeviceService
         cmd.CommandText = "SELECT * FROM fn_upsert_device(@user_id, @fcm_token, @platform)";
         cmd.Parameters.AddWithValue("user_id", userId);
         cmd.Parameters.AddWithValue("fcm_token", fcmToken);
-        cmd.Parameters.AddWithValue("platform", EnumParsing.Parse<DevicePlatform>(platform, "platform"));
+        cmd.Parameters.Add(new NpgsqlParameter("platform", EnumParsing.Parse<DevicePlatform>(platform, "platform")) { DataTypeName = "device_platform" });
         await cmd.ExecuteNonQueryAsync();
     });
 
