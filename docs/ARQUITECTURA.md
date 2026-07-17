@@ -1210,9 +1210,14 @@ Un principio gobierna todo el pipeline: **la imagen que corre en producción es 
 
 Ya es un archivo real, [`.github/workflows/backend-ci.yml`](../.github/workflows/backend-ci.yml) — reemplaza por completo el ejemplo en Python/Poetry/pytest que tenía esta sección (obsoleto desde que el backend pasó a C#/.NET, §22/§23). `dotnet build` se verificó de verdad: una reconstrucción limpia (sin `bin/`/`obj/` previos) de `APIOmniTask/OmniTask.sln` termina en **0 warnings, 0 errores**.
 
-El job también aplica `db/schema.sql`, `db/02_add_refresh_tokens_table.sql` y `db/03_stored_procedures_and_functions.sql` contra un Postgres real como *service container* — un `dotnet build` limpio no detecta que las funciones/procedimientos se desincronizaron de lo que el C# espera (§23), así que validar el SQL en el mismo job importa tanto como compilar. Esta parte específica (el `psql` contra el contenedor de Postgres de GitHub Actions) no se pudo verificar en este entorno de trabajo por no tener PostgreSQL/Docker disponibles aquí — sí se confirmó que el SQL es el mismo ya revisado en la §23.
+El job también aplica `db/schema.sql`, `db/02_add_refresh_tokens_table.sql` y `db/03_stored_procedures_and_functions.sql` contra un Postgres real como *service container*, y luego corre `dotnet test --no-build` contra ese mismo Postgres (§25) — un `dotnet build` limpio no detecta que las funciones/procedimientos se desincronizaron de lo que el C# espera, así que validar el SQL y las pruebas de integración en el mismo job importa tanto como compilar.
 
-Todavía no hay un proyecto de pruebas para el backend (a diferencia de `omnitask_app`, que ya tiene 21, §13/§24) — el workflow lo deja anotado como siguiente paso.
+**Verificado en GitHub Actions, no solo localmente**: se corrió el pipeline real tres veces sobre `main` hasta quedar en verde —
+1. Primer run: 28/29 pruebas, 1 falla real por precisión (`DateTimeOffset` en ticks de 100ns comparado contra el mismo valor después de un round-trip por `timestamptz`, que Postgres solo guarda en microsegundos).
+2. Segundo run (tras corregir lo anterior): 28/29, otra falla real — la prueba asumía que reprogramar una actividad borraba los reminders viejos, pero `fn_update_activity` los marca `failed` e inserta los nuevos `pending` en la misma lista.
+3. Tercer run: **29/29 en verde**, con las pruebas de integración corriendo de verdad contra el Postgres del service container, no saltándose.
+
+Esto es exactamente el tipo de bug que una revisión manual del SQL no iba a atrapar — solo apareció al ejecutar el pipeline real en GitHub Actions.
 
 ```yaml
 # .github/workflows/backend-ci.yml
@@ -1252,6 +1257,11 @@ jobs:
           psql -h localhost -U postgres -d omnitask_test -f db/schema.sql
           psql -h localhost -U postgres -d omnitask_test -f db/02_add_refresh_tokens_table.sql
           psql -h localhost -U postgres -d omnitask_test -f db/03_stored_procedures_and_functions.sql
+      - name: Ejecutar pruebas
+        working-directory: APIOmniTask
+        env:
+          TEST_DATABASE_URL: "Host=localhost;Port=5432;Database=omnitask_test;Username=postgres;Password=test"
+        run: dotnet test --no-build
 ```
 
 ### Backend — deploy automático a staging
@@ -1326,7 +1336,9 @@ jobs:
 
 ### Flutter — CI en cada pull request
 
-Ya es un archivo real: [`.github/workflows/flutter-ci.yml`](../.github/workflows/flutter-ci.yml), no solo el ejemplo de esta sección — con `working-directory: omnitask_app` (el nombre real del paquete, §24) y `flutter-version: "3.44.6"`, la misma con la que se verificaron `flutter analyze` y las 21 pruebas de la sección anterior. Correr los cuatro pasos localmente desde un checkout limpio (sin `.dart_tool/` ni los `*.freezed.dart`/`*.g.dart` generados) confirma que el workflow, tal como está escrito, pasa de punta a punta.
+Ya es un archivo real: [`.github/workflows/flutter-ci.yml`](../.github/workflows/flutter-ci.yml), no solo el ejemplo de esta sección — con `working-directory: omnitask_app` (el nombre real del paquete, §24) y `flutter-version: "3.44.6"`, la misma con la que se verificaron `flutter analyze` y las 21 pruebas de la sección anterior.
+
+**Verificado en GitHub Actions, no solo localmente**: los triggers `pull_request`/`push` están acotados a cambios bajo `omnitask_app/**`, así que el workflow nunca se había disparado realmente en el repo — ningún commit hasta ahora había tocado esa carpeta. Se agregó `workflow_dispatch` para poder correrlo manualmente contra `main` y confirmarlo de punta a punta en GitHub Actions: **`flutter analyze` → "No issues found!" y `flutter test` → 🎉 21 tests passed, en verde a la primera corrida**, sin necesidad de corregir nada en el código Flutter.
 
 ```yaml
 # .github/workflows/flutter-ci.yml
@@ -1337,6 +1349,7 @@ on:
   push:
     branches: [main]
     paths: ["omnitask_app/**"]
+  workflow_dispatch: {}
 
 jobs:
   analyze-and-test:
@@ -3513,9 +3526,15 @@ Casos cubiertos por las pruebas de integración, todos ejercitando reglas que vi
 - **Activities**: crear con fecha genera reminders `pending` y queda `scheduled`; crear sin fecha fuerza `unscheduled` sin reminders; reprogramar cancela (`failed`) los reminders viejos y crea los nuevos; `clear_starts_at` regresa la actividad al backlog; cancelar marca los reminders pendientes como `failed` sin enviarlos; acceder a la actividad de otro usuario → 404 (`fn_get_activity_by_id` filtra por `user_id`).
 - **Contacts**: crear contacto; borrar un contacto sin actividades asociadas; borrar un contacto con actividades asociadas → 409 (`sp_delete_contact`), para no dejar actividades con un `contact_id` colgante.
 
-### Verificado — y lo que falta por verificar
+### Verificado dos veces: local (con skip) y en GitHub Actions (de verdad, sin skip)
 
-`dotnet build` y `dotnet test` ya se corrieron de verdad sobre `OmniTask.sln`: **13 pruebas unitarias pasan, 16 de integración se saltan** (sin Postgres alcanzable en este entorno), 0 fallos. Lo que *no* se ha verificado todavía en este entorno es que las pruebas de integración realmente pasen contra un Postgres real con el esquema y los stored procedures aplicados — eso se decidió delegar al pipeline de CI, que sí trae su propio contenedor de Postgres (§13 del `backend-ci.yml`). `backend-ci.yml` ahora incluye un paso `dotnet test --no-build` con `TEST_DATABASE_URL` apuntando al servicio de Postgres del job, después de aplicar `schema.sql`, `02_add_refresh_tokens_table.sql` y `03_stored_procedures_and_functions.sql` — así que la primera ejecución real de estas pruebas de integración va a ser la próxima vez que corra ese workflow, no en este sandbox.
+Localmente, `dotnet build`/`dotnet test` sobre `OmniTask.sln` dan **13 pruebas unitarias pasando, 16 de integración saltadas** (0 fallos) — este entorno de desarrollo no tiene Postgres/Docker/sudo disponibles, así que `DatabaseFixture.IsAvailable` queda en `false` y las de integración se saltan en vez de fallar.
+
+En **GitHub Actions**, donde `backend-ci.yml` sí trae su propio contenedor de Postgres (§13), las 29 pruebas corren de verdad — nada se salta. Le tomó tres corridas reales sobre `main` llegar a verde, y las dos primeras fallas fueron bugs genuinos en las pruebas mismas, no en el backend:
+1. Comparar un `DateTimeOffset` (precisión de tick, 100ns) contra el mismo valor después de un round-trip por `timestamptz` de Postgres, que solo guarda microsegundos — se corrigió truncando el valor esperado a microsegundos antes de comparar.
+2. Asumir que reprogramar una actividad borra los reminders viejos — en realidad `fn_update_activity` los marca `failed` e inserta los nuevos `pending` en la misma lista, así que la prueba esperaba `Assert.All(..., "pending")` sobre una colección que legítimamente mezcla ambos estados; se corrigió separando la aserción en dos grupos.
+
+Tercera corrida: **29/29 en verde**. Es la prueba de que "compila y las pruebas pasan localmente" no es lo mismo que "el pipeline de CI pasa" — ambos bugs solo salieron a la luz al ejecutar contra un Postgres real dentro del propio workflow.
 
 ---
 
