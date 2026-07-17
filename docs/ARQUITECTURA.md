@@ -3469,14 +3469,15 @@ El endpoint `PATCH /activities/{id}` ganó `clear_starts_at`/`clear_ends_at` exp
 - **`ContactPickerField`** no usa el widget `Autocomplete` de Flutter (su `optionsBuilder` es síncrono) — es un `TextField` con `Timer` de debounce propio y una lista desplegable simple, para poder buscar contra `GET /contacts?search=` de forma asíncrona.
 - **Validación agregada en el formulario de actividad**: si "Sin fecha por ahora" queda desactivado pero no se selecciona ninguna fecha, ahora avisa explícitamente en vez de enviar un PATCH que no cambia nada en silencio.
 
-### Antes de compilar
+### Verificado con `flutter analyze` — tres bugs reales que salieron al compilar de verdad
 
-1. `flutter pub get`
-2. `dart run build_runner build --delete-conflicting-outputs` — genera los `*.freezed.dart`/`*.g.dart` de los 10 modelos y los providers `@riverpod` (ninguno está en el repo, se regeneran localmente).
-3. `flutterfire configure` contra el proyecto de Firebase real (§20) para generar `lib/firebase_options.dart`, y descomentar `await Firebase.initializeApp()` en `main.dart`.
-4. `flutter build appbundle`/`build ipa --release --dart-define=API_BASE_URL=...` (§13, §19) para el build de producción.
+`flutter pub get`, `dart run build_runner build --delete-conflicting-outputs` y `flutter analyze` ya se corrieron contra el código (Flutter 3.44.6 estable) — no se quedó solo en revisión manual. Salieron tres errores reales, ya corregidos:
 
-No hay SDK de Flutter/Dart disponible en este entorno de trabajo, así que estos cuatro pasos no se pudieron correr aquí — quedan como el primer chequeo real antes de considerar esto terminado.
+- **Error de sintaxis en `dio_client.dart`**: un ternario anidado con `as String?` justo antes del `:` confundía al parser (`mapApiError` ahora usa `if` explícitos en vez de una expresión anidada).
+- **`GoRouterRefreshStream` asumía que `authNotifierProvider` exponía un `.stream`** — `AsyncNotifierProvider` no tiene ese getter. Se reemplazó por `GoRouterRefreshNotifier`, un `ChangeNotifier` alimentado por `ref.listen(...)`, la forma correcta de conectar un provider de Riverpod al `refreshListenable` de go_router.
+- **`ActivityFormController.update(...)` chocaba con el método `update(cb)`** que `AsyncNotifierBase` ya define — se renombró a `updateActivity`.
+
+`flutter analyze` termina en cero problemas. Sigue pendiente `flutterfire configure` (genera `lib/firebase_options.dart` contra el proyecto de Firebase real, §20) y el build de producción con `flutter build appbundle`/`build ipa --release --dart-define=API_BASE_URL=...` (§13, §19), que sí dependen de credenciales y del toolchain de Android/iOS reales.
 
 ---
 

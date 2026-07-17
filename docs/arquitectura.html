@@ -3877,20 +3877,20 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=...</pre>
           <li><b>Validación agregada en el formulario de actividad</b>: si "Sin fecha por ahora" queda desactivado pero no se selecciona ninguna fecha, ahora avisa explícitamente en vez de enviar un PATCH que no cambia nada en silencio.</li>
         </ul>
 
-        <h3>Antes de compilar</h3>
-        <ol>
-          <li><code>flutter pub get</code></li>
-          <li><code>dart run build_runner build --delete-conflicting-outputs</code> — genera los <code>*.freezed.dart</code>/<code>*.g.dart</code> de los 10 modelos y los providers <code>@riverpod</code> (ninguno está en el repo, se regeneran localmente).</li>
-          <li><code>flutterfire configure</code> contra el proyecto de Firebase real (§20) para generar <code>lib/firebase_options.dart</code>, y descomentar <code>await Firebase.initializeApp()</code> en <code>main.dart</code>.</li>
-          <li><code>flutter build appbundle</code>/<code>build ipa --release --dart-define=API_BASE_URL=...</code> (§13, §19) para el build de producción.</li>
-        </ol>
-        <p>No hay SDK de Flutter/Dart disponible en este entorno de trabajo, así que estos cuatro pasos no se pudieron correr aquí — quedan como el primer chequeo real antes de considerar esto terminado.</p>
+        <h3>Verificado con <code>flutter analyze</code> — tres bugs reales que salieron al compilar de verdad</h3>
+        <p><code>flutter pub get</code>, <code>dart run build_runner build --delete-conflicting-outputs</code> y <code>flutter analyze</code> ya se corrieron contra el código (Flutter 3.44.6 estable) — no se quedó solo en revisión manual. Salieron tres errores reales, ya corregidos:</p>
+        <ul>
+          <li><b>Error de sintaxis en <code>dio_client.dart</code></b>: un ternario anidado con <code>as String?</code> justo antes del <code>:</code> confundía al parser (<code>mapApiError</code> ahora usa <code>if</code> explícitos en vez de una expresión anidada).</li>
+          <li><b><code>GoRouterRefreshStream</code> asumía que <code>authNotifierProvider</code> exponía un <code>.stream</code></b> — <code>AsyncNotifierProvider</code> no tiene ese getter. Se reemplazó por <code>GoRouterRefreshNotifier</code>, un <code>ChangeNotifier</code> alimentado por <code>ref.listen(...)</code>, la forma correcta de conectar un provider de Riverpod al <code>refreshListenable</code> de go_router.</li>
+          <li><b><code>ActivityFormController.update(...)</code> chocaba con el método <code>update(cb)</code></b> que <code>AsyncNotifierBase</code> ya define — se renombró a <code>updateActivity</code>.</li>
+        </ul>
+        <p><code>flutter analyze</code> termina en cero problemas. Sigue pendiente <code>flutterfire configure</code> (genera <code>lib/firebase_options.dart</code> contra el proyecto de Firebase real, §20) y el build de producción con <code>flutter build appbundle</code>/<code>build ipa --release --dart-define=API_BASE_URL=...</code> (§13, §19), que sí dependen de credenciales y del toolchain de Android/iOS reales.</p>
       </section>
 
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §24 añadida: app móvil real en Flutter (omnitask_app/), implementando §12-§20 contra la API de la §22/§23 · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §24 actualizada: omnitask_app/ verificado con flutter analyze (0 problemas) tras corregir 3 bugs reales · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>
