@@ -6,7 +6,8 @@ build/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-pubspec.lock
+# pubspec.lock SÍ se versiona: esto es una app, no un paquete publicado —
+# fijar versiones exactas da builds reproducibles entre máquinas/CI.
 
 # Generado por freezed/json_serializable/riverpod_generator — se regenera
 # con `dart run build_runner build --delete-conflicting-outputs`.
