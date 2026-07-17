@@ -1,0 +1,92 @@
+name: Android Release
+
+on:
+  push:
+    tags: ["app-v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-sign-release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: omnitask_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.6"
+          channel: "stable"
+
+      - run: flutter pub get
+
+      # freezed/json_serializable/riverpod_generator no se versionan (§24) —
+      # sin este paso, ni analyze ni el build encontrarían *.freezed.dart/*.g.dart.
+      - run: dart run build_runner build --delete-conflicting-outputs
+
+      # Nunca firmar y publicar un build que no pasa lo mínimo que ya corre
+      # en cada PR (§13) — un tag roto no debe convertirse en un release roto.
+      - run: flutter analyze
+      - run: flutter test
+
+      - name: Reconstruir el keystore de firma desde los secrets (§26)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/omnitask-release.jks
+          cat > android/key.properties <<EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=omnitask-release.jks
+          EOF
+
+      - name: Derivar el nombre de versión del tag (app-v1.2.3 -> 1.2.3)
+        id: version
+        run: echo "name=${GITHUB_REF_NAME#app-v}" >> "$GITHUB_OUTPUT"
+
+      - name: Compilar el APK de release firmado
+        run: |
+          flutter build apk --release \
+            --build-name="${{ steps.version.outputs.name }}" \
+            --build-number="${{ github.run_number }}" \
+            --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/APIOmniTask/api/v1
+
+      # El runner se destruye al terminar el job, pero no hay razón para
+      # dejar el keystore en el filesystem más tiempo del necesario.
+      - name: Borrar el keystore del runner
+        if: always()
+        run: rm -f android/app/omnitask-release.jks android/key.properties
+
+      - name: Preparar los assets del release
+        run: |
+          cd build/app/outputs/flutter-apk
+          cp app-release.apk "omnitask-${GITHUB_REF_NAME#app-}.apk"
+          cp app-release.apk "omnitask-latest.apk"
+          sha256sum "omnitask-${GITHUB_REF_NAME#app-}.apk" > "omnitask-${GITHUB_REF_NAME#app-}.apk.sha256"
+          sha256sum "omnitask-latest.apk" > "omnitask-latest.apk.sha256"
+
+      # omnitask-latest.apk/.sha256 se suben con el mismo nombre en cada
+      # release para que docs/descarga-app.html pueda enlazar la URL estable
+      # .../releases/latest/download/omnitask-latest.apk sin editarse nunca.
+      - name: Publicar el GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ASSETS="build/app/outputs/flutter-apk/omnitask-${GITHUB_REF_NAME#app-}.apk \
+                   build/app/outputs/flutter-apk/omnitask-${GITHUB_REF_NAME#app-}.apk.sha256 \
+                   build/app/outputs/flutter-apk/omnitask-latest.apk \
+                   build/app/outputs/flutter-apk/omnitask-latest.apk.sha256"
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" $ASSETS --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" $ASSETS \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "OmniTask ${{ steps.version.outputs.name }} (Android)" \
+              --generate-notes
+          fi

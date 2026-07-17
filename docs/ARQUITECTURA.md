@@ -3577,6 +3577,70 @@ Build verificado con `aapt dump badging` (application ID `com.clinicacampbell.om
 
 El `.apk` (55.4 MB) se publicó como asset del release [`app-v1.0.0`](https://github.com/WILSP1971/AppOmniTask/releases/tag/app-v1.0.0) en GitHub — no se comitea al repo (es un binario grande, y un Release da una URL de descarga estable sin inflar el historial de git). La página [`docs/descarga-app.html`](descarga-app.html) trae el botón de descarga directo, los pasos para habilitar "fuentes desconocidas" (necesario porque esta build no está en Play Store), y el hash SHA-256 para verificar la descarga.
 
+### El keystore, respaldado y disponible para CI vía GitHub Actions secrets
+
+El `.jks` generado más arriba y su contraseña se sacaron de este entorno de trabajo hacia un lugar seguro fuera de git, y además se guardaron cifrados como secrets del repositorio para que un workflow de CI pueda firmar sin que nadie tenga que copiar el archivo a mano en cada release:
+
+- `ANDROID_KEYSTORE_BASE64` — el `.jks` codificado en base64.
+- `ANDROID_KEYSTORE_PASSWORD` — la contraseña (misma para store y key, por ser PKCS12).
+- `ANDROID_KEY_ALIAS` — `omnitask`.
+
+GitHub cifra estos valores en reposo y los enmascara automáticamente en cualquier log de Actions — ni siquiera con acceso de administrador al repo se puede volver a leer su contenido, solo sobrescribirlos.
+
+### `android-release.yml`: firma y publica automáticamente en cada tag
+
+[`.github/workflows/android-release.yml`](../.github/workflows/android-release.yml) dispara con cualquier tag `app-v*.*.*` y reproduce a mano alzada exactamente los pasos de esta sección: `flutter analyze`/`flutter test` primero (nunca firmar un build que no pasa lo mínimo que ya corre en cada PR, §13), reconstruye el keystore a partir de los tres secrets, compila con `--build-name`/`--build-number` derivados del tag y del número de corrida, y publica (o actualiza, si el workflow se vuelve a correr sobre el mismo tag) un GitHub Release con cuatro assets: el `.apk` con nombre de versión y su `.sha256`, más una copia fija `omnitask-latest.apk`/`.sha256` — esta última es la que enlaza `docs/descarga-app.html`, así que la página de descarga no necesita editarse en cada release nuevo.
+
+```yaml
+# .github/workflows/android-release.yml
+name: Android Release
+on:
+  push:
+    tags: ["app-v*.*.*"]
+permissions:
+  contents: write
+jobs:
+  build-sign-release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: omnitask_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { flutter-version: "3.44.6", channel: "stable" }
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: flutter analyze
+      - run: flutter test
+      - name: Reconstruir el keystore desde los secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/omnitask-release.jks
+          cat > android/key.properties <<EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=omnitask-release.jks
+          EOF
+      - id: version
+        run: echo "name=${GITHUB_REF_NAME#app-v}" >> "$GITHUB_OUTPUT"
+      - run: |
+          flutter build apk --release \
+            --build-name="${{ steps.version.outputs.name }}" \
+            --build-number="${{ github.run_number }}" \
+            --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/APIOmniTask/api/v1
+      - if: always()
+        run: rm -f android/app/omnitask-release.jks android/key.properties
+      # ... empaqueta omnitask-<versión>.apk + omnitask-latest.apk y sus .sha256,
+      # y los publica con `gh release create`/`gh release upload --clobber`.
+```
+
+No se pudo disparar este workflow de verdad en este entorno (crear un tag y esperar a que GitHub Actions lo corra excede lo que se puede verificar aquí) — quedó revisado línea por línea contra lo que ya se hizo a mano en esta misma sección, pero su primera ejecución real será el próximo tag `app-v*.*.*` que se empuje.
+
 ---
 
 *Documento de arquitectura v1 · 11 de julio de 2026 · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.*

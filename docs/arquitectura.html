@@ -3976,12 +3976,70 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=...</pre>
   --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/APIOmniTask/api/v1</pre>
         <p>Build verificado con <code>aapt dump badging</code> (application ID <code>com.clinicacampbell.omnitask_app</code>, label "OmniTask", <code>minSdk 24</code>/<code>targetSdk 36</code>, permisos <code>INTERNET</code>/<code>POST_NOTIFICATIONS</code> presentes) y <code>apksigner verify</code> (confirma la firma con el certificado propio de OmniTask, no el de debug). <b>No se pudo instalar en un dispositivo o emulador Android real dentro de este entorno de trabajo</b> — no hay <code>/dev/kvm</code> para un emulador ni un teléfono físico conectado, así que la instalación real en un celular queda pendiente de que alguien la haga fuera de este entorno.</p>
         <p>El <code>.apk</code> (55.4 MB) se publicó como asset del release <a href="https://github.com/WILSP1971/AppOmniTask/releases/tag/app-v1.0.0"><code>app-v1.0.0</code></a> en GitHub — no se comitea al repo (es un binario grande, y un Release da una URL de descarga estable sin inflar el historial de git). La página <a href="descarga-app.html"><code>docs/descarga-app.html</code></a> trae el botón de descarga directo, los pasos para habilitar "fuentes desconocidas" (necesario porque esta build no está en Play Store), y el hash SHA-256 para verificar la descarga.</p>
+
+        <h3>El keystore, respaldado y disponible para CI vía GitHub Actions secrets</h3>
+        <p>El <code>.jks</code> generado más arriba y su contraseña se sacaron de este entorno de trabajo hacia un lugar seguro fuera de git, y además se guardaron cifrados como secrets del repositorio para que un workflow de CI pueda firmar sin que nadie tenga que copiar el archivo a mano en cada release:</p>
+        <ul>
+          <li><code>ANDROID_KEYSTORE_BASE64</code> — el <code>.jks</code> codificado en base64.</li>
+          <li><code>ANDROID_KEYSTORE_PASSWORD</code> — la contraseña (misma para store y key, por ser PKCS12).</li>
+          <li><code>ANDROID_KEY_ALIAS</code> — <code>omnitask</code>.</li>
+        </ul>
+        <p>GitHub cifra estos valores en reposo y los enmascara automáticamente en cualquier log de Actions — ni siquiera con acceso de administrador al repo se puede volver a leer su contenido, solo sobrescribirlos.</p>
+
+        <h3><code>android-release.yml</code>: firma y publica automáticamente en cada tag</h3>
+        <p><a href="https://github.com/WILSP1971/AppOmniTask/blob/main/.github/workflows/android-release.yml"><code>.github/workflows/android-release.yml</code></a> dispara con cualquier tag <code>app-v*.*.*</code> y reproduce a mano alzada exactamente los pasos de esta sección: <code>flutter analyze</code>/<code>flutter test</code> primero (nunca firmar un build que no pasa lo mínimo que ya corre en cada PR, §13), reconstruye el keystore a partir de los tres secrets, compila con <code>--build-name</code>/<code>--build-number</code> derivados del tag y del número de corrida, y publica (o actualiza, si el workflow se vuelve a correr sobre el mismo tag) un GitHub Release con cuatro assets: el <code>.apk</code> con nombre de versión y su <code>.sha256</code>, más una copia fija <code>omnitask-latest.apk</code>/<code>.sha256</code> — esta última es la que enlaza <code>docs/descarga-app.html</code>, así que la página de descarga no necesita editarse en cada release nuevo.</p>
+        <pre class="code"># .github/workflows/android-release.yml
+name: Android Release
+on:
+  push:
+    tags: ["app-v*.*.*"]
+permissions:
+  contents: write
+jobs:
+  build-sign-release:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: omnitask_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { flutter-version: "3.44.6", channel: "stable" }
+      - run: flutter pub get
+      - run: dart run build_runner build --delete-conflicting-outputs
+      - run: flutter analyze
+      - run: flutter test
+      - name: Reconstruir el keystore desde los secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/omnitask-release.jks
+          cat > android/key.properties <<EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=omnitask-release.jks
+          EOF
+      - id: version
+        run: echo "name=${GITHUB_REF_NAME#app-v}" >> "$GITHUB_OUTPUT"
+      - run: |
+          flutter build apk --release \
+            --build-name="${{ steps.version.outputs.name }}" \
+            --build-number="${{ github.run_number }}" \
+            --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/APIOmniTask/api/v1
+      - if: always()
+        run: rm -f android/app/omnitask-release.jks android/key.properties
+      # ... empaqueta omnitask-&lt;versión&gt;.apk + omnitask-latest.apk y sus .sha256,
+      # y los publica con `gh release create`/`gh release upload --clobber`.</pre>
+        <p>No se pudo disparar este workflow de verdad en este entorno (crear un tag y esperar a que GitHub Actions lo corra excede lo que se puede verificar aquí) — quedó revisado línea por línea contra lo que ya se hizo a mano en esta misma sección, pero su primera ejecución real será el próximo tag <code>app-v*.*.*</code> que se empuje.</p>
       </section>
 
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §26 agregada: primer APK de Android firmado y publicado como GitHub Release, página de descarga en docs/descarga-app.html · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §26 ampliada: keystore respaldado como GitHub Actions secrets y workflow android-release.yml que firma y publica automáticamente en cada tag app-v*.*.* · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>
