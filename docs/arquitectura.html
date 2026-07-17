@@ -533,6 +533,7 @@
       <a href="#stored-procedures">§23 Stored procedures y functions</a>
       <a href="#flutter-real">§24 App móvil real: Flutter</a>
       <a href="#backend-tests">§25 Proyecto de pruebas del backend</a>
+      <a href="#android-release">§26 Primer release de Android instalable</a>
     </nav>
 
     <main>
@@ -3943,10 +3944,44 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=...</pre>
         <p>Tercera corrida: <b>29/29 en verde</b>. Es la prueba de que "compila y las pruebas pasan localmente" no es lo mismo que "el pipeline de CI pasa" — ambos bugs solo salieron a la luz al ejecutar contra un Postgres real dentro del propio workflow.</p>
       </section>
 
+      <section id="android-release">
+        <div class="sec-head"><span class="sec-num">§26</span><h2>Primer release de Android instalable</h2></div>
+        <p>Hasta ahora <code>omnitask_app/</code> solo se había verificado con <code>flutter analyze</code>/<code>flutter test</code> y como app de escritorio Linux (§24) — nunca se había compilado como app móvil real, porque la carpeta <code>android/</code> nunca se generó del todo. Esta sección documenta el primer APK instalable en un celular real, y los problemas — reales, no hipotéticos — que solo aparecieron al intentarlo.</p>
+
+        <h3>Herramientas que hicieron falta</h3>
+        <p>Compilar Android requiere un toolchain que no estaba disponible: JDK 17 y el Android SDK (<code>platform-tools</code>, <code>build-tools</code>, una plataforma, el NDK). Se instalaron en espacio de usuario, sin root, igual que se hizo con el propio Flutter (§24) — <code>flutter doctor</code> quedó en verde para el toolchain de Android después.</p>
+        <p>Con eso, <code>flutter create --platforms=android --org com.clinicacampbell .</code> generó el <code>android/</code> que faltaba, con cuidado de no tocar <code>lib/</code>, <code>pubspec.yaml</code> ni las pruebas existentes (se descartó el <code>test/widget_test.dart</code> boilerplate que trae la plantilla, que no aplica a esta app).</p>
+
+        <h3>Bug real: la app crasheaba sin Firebase configurado</h3>
+        <p><code>firebase_options.dart</code> no existe todavía (falta <code>flutterfire configure</code> contra un proyecto Firebase real, §20 — pendiente porque requiere una cuenta/consola de Firebase que este entorno no tiene). El código ya sabía esto y dejaba <code>Firebase.initializeApp()</code> comentado en <code>main.dart</code> — pero cuatro lugares seguían llamando a <code>FirebaseMessaging</code> sin comprobar si había una app de Firebase inicializada: el listener de push en primer plano, el registro de dispositivo (llamado justo después de login/registro), los deep links del router, y el provider del token FCM en Configuración. Sin el guard, cualquiera de esos falla en el primer frame o en el primer login. Se corrigió agregando <code>if (Firebase.apps.isEmpty) return;</code> (o equivalente) en los cuatro — el resto de la app funciona igual, y el push queda inactivo hasta que exista un proyecto Firebase real.</p>
+
+        <h3>Bugs reales de dependencias, solo visibles al compilar release</h3>
+        <p>Ninguno de estos tres lo atrapó <code>flutter analyze</code> ni <code>flutter test</code> — los tres son incompatibilidades que solo aparecen en la compilación AOT completa de <code>flutter build apk --release</code>:</p>
+        <ul>
+          <li><b><code>syncfusion_flutter_calendar</code> 26.2.14</b> define su propia clase <code>SelectionDetails</code>, que quedó ambigua contra una clase del mismo nombre que el framework Flutter agregó en una versión posterior a cuando se pineó esa dependencia. Se subió a <code>^34.1.31</code> (arrastrando <code>intl</code> a <code>^0.20.2</code>, que <code>flutter_localizations</code> exige a partir de esa versión de Syncfusion).</li>
+          <li><b><code>flutter_local_notifications</code> 17→22</b> movió <code>initialize()</code> y <code>show()</code> de parámetros posicionales a nombrados, y a partir de la v17 exige <i>core library desugaring</i> habilitado en Gradle (<code>isCoreLibraryDesugaringEnabled = true</code> + dependencia <code>desugar_jdk_libs</code>).</li>
+          <li><b><code>flutter_timezone</code> 1.0.8→5.1.0</b> cambió <code>getLocalTimezone()</code> de devolver un <code>String</code> a devolver un <code>TimezoneInfo</code> (con <code>.identifier</code> para el nombre IANA) — afectaba a <code>register_screen.dart</code> y <code>profile_screen.dart</code>.</li>
+        </ul>
+        <p>Después de los tres upgrades, <code>flutter analyze</code> sigue en cero problemas y las 21 pruebas del §24 siguen pasando — y <code>flutter-ci.yml</code> (§13) corrió en GitHub Actions sobre este mismo commit y confirmó lo mismo en verde.</p>
+
+        <h3>Firma: un keystore propio, no la clave de debug compartida</h3>
+        <p>El primer build de prueba quedó firmado con la clave de debug genérica de Flutter — la misma en cualquier máquina con Flutter instalado, útil solo para probar en un único dispositivo propio. Para algo que se va a compartir con más de una persona del equipo, se generó un keystore dedicado de OmniTask (<code>keytool -genkeypair</code>, RSA 2048, validez 10.000 días) y se conectó en <code>android/app/build.gradle.kts</code> vía <code>android/key.properties</code> — ni el <code>.jks</code> ni <code>key.properties</code> van al repo (<code>android/.gitignore</code> ya los excluía por defecto); si <code>key.properties</code> no existe, el build cae de vuelta a la firma de debug para que <code>flutter run --release</code> siga funcionando en un checkout nuevo sin esas credenciales.</p>
+        <div class="callout alt">
+          <span class="label">Importante — este keystore vive solo en el entorno donde se generó</span>
+          Android exige la misma firma para instalar una "actualización" sobre una app ya instalada; si este <code>.jks</code> se pierde, cualquier build futuro necesitará desinstalar y reinstalar en cada celular en vez de actualizar en el sitio. Guardar <code>android/app/omnitask-release.jks</code> y <code>android/key.properties</code> en un lugar seguro (gestor de contraseñas o vault del equipo) antes de que este entorno de trabajo deje de existir.
+        </div>
+
+        <h3>El APK, publicado como GitHub Release</h3>
+        <pre class="code">flutter build apk --release \
+  --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/APIOmniTask/api/v1</pre>
+        <p>Build verificado con <code>aapt dump badging</code> (application ID <code>com.clinicacampbell.omnitask_app</code>, label "OmniTask", <code>minSdk 24</code>/<code>targetSdk 36</code>, permisos <code>INTERNET</code>/<code>POST_NOTIFICATIONS</code> presentes) y <code>apksigner verify</code> (confirma la firma con el certificado propio de OmniTask, no el de debug). <b>No se pudo instalar en un dispositivo o emulador Android real dentro de este entorno de trabajo</b> — no hay <code>/dev/kvm</code> para un emulador ni un teléfono físico conectado, así que la instalación real en un celular queda pendiente de que alguien la haga fuera de este entorno.</p>
+        <p>El <code>.apk</code> (55.4 MB) se publicó como asset del release <a href="https://github.com/WILSP1971/AppOmniTask/releases/tag/app-v1.0.0"><code>app-v1.0.0</code></a> en GitHub — no se comitea al repo (es un binario grande, y un Release da una URL de descarga estable sin inflar el historial de git). La página <a href="descarga-app.html"><code>docs/descarga-app.html</code></a> trae el botón de descarga directo, los pasos para habilitar "fuentes desconocidas" (necesario porque esta build no está en Play Store), y el hash SHA-256 para verificar la descarga.</p>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §13/§25 actualizadas: Backend CI y Flutter CI verificados en verde en GitHub Actions (29/29 y 21/21 pruebas) · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §26 agregada: primer APK de Android firmado y publicado como GitHub Release, página de descarga en docs/descarga-app.html · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>

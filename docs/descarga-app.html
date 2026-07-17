@@ -1,0 +1,289 @@
+<title>OmniTask — Descarga para Android</title>
+<style>
+  :root {
+    --bg: #f4f8f7;
+    --surface: #ffffff;
+    --ink: #12262b;
+    --ink-soft: #4b6167;
+    --accent: #0e7c72;
+    --accent-dark: #0a5b54;
+    --accent-soft: #e3f2ef;
+    --warn-ink: #92400e;
+    --warn-bg: #fef3e2;
+    --warn-line: #f3dcb1;
+    --line: #dce7e5;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 56px 20px 72px;
+  }
+
+  .eyebrow {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-dark);
+    margin: 0 0 10px;
+  }
+
+  h1 {
+    font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-size: clamp(2.1rem, 5vw, 2.7rem);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 12px;
+    color: var(--ink);
+  }
+
+  .lede {
+    font-size: 1.05rem;
+    color: var(--ink-soft);
+    max-width: 46ch;
+    margin: 0 0 32px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 28px;
+    margin-bottom: 20px;
+  }
+
+  .badge-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 22px;
+  }
+
+  .badge {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent-dark);
+    background: var(--accent-soft);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .download-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    background: var(--accent);
+    color: #fff;
+    text-decoration: none;
+    font-family: ui-serif, Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 600;
+    padding: 17px 20px;
+    border-radius: 10px;
+    transition: background-color 0.15s ease, transform 0.15s ease;
+  }
+  .download-btn:hover { background: var(--accent-dark); }
+  .download-btn:active { transform: scale(0.99); }
+  .download-btn:focus-visible {
+    outline: 3px solid var(--accent-dark);
+    outline-offset: 3px;
+  }
+  .download-btn svg { flex: none; }
+
+  .filemeta {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+
+  h2 {
+    font-family: ui-serif, Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 16px;
+  }
+
+  ol.steps {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: step;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  ol.steps li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 12px;
+    align-items: baseline;
+  }
+
+  ol.steps li::before {
+    content: counter(step);
+    font-family: ui-serif, Georgia, serif;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--accent-dark);
+    background: var(--accent-soft);
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  ol.steps strong { color: var(--ink); }
+  ol.steps span.detail { display: block; color: var(--ink-soft); font-size: 14.5px; margin-top: 2px; }
+
+  .callout {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-line);
+    color: var(--warn-ink);
+    border-radius: 10px;
+    padding: 16px 18px;
+    font-size: 14.5px;
+    margin-top: 4px;
+  }
+  .callout strong { display: block; margin-bottom: 4px; }
+
+  details {
+    margin-top: 4px;
+  }
+  summary {
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 14.5px;
+    color: var(--accent-dark);
+    padding: 4px 0;
+  }
+  summary:focus-visible { outline: 2px solid var(--accent-dark); outline-offset: 2px; }
+
+  .kv {
+    margin-top: 14px;
+    border-top: 1px solid var(--line);
+    padding-top: 14px;
+  }
+  .kv-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 7px 0;
+    font-size: 13.5px;
+  }
+  .kv-row + .kv-row { border-top: 1px dashed var(--line); }
+  .kv-row dt { color: var(--ink-soft); flex: none; }
+  .kv-row dd {
+    margin: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    word-break: break-all;
+    color: var(--ink);
+  }
+
+  footer {
+    margin-top: 36px;
+    font-size: 13px;
+    color: var(--ink-soft);
+    text-align: center;
+    line-height: 1.7;
+  }
+  footer a { color: var(--accent-dark); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .download-btn { transition: none; }
+  }
+</style>
+
+<div class="page">
+  <p class="eyebrow">Clínica Campbell &middot; Build interna</p>
+  <h1>OmniTask para Android</h1>
+  <p class="lede">Agenda de citas y actividades con recordatorios, para probar en un celular real antes de decidir un lanzamiento más amplio.</p>
+
+  <div class="card">
+    <div class="badge-row">
+      <span class="badge">v1.0.0</span>
+      <span class="badge">Android 7.0+</span>
+      <span class="badge">55.4 MB</span>
+    </div>
+
+    <a class="download-btn" href="https://github.com/WILSP1971/AppOmniTask/releases/download/app-v1.0.0/omnitask-v1.0.0.apk" download>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+      Descargar el APK
+    </a>
+    <div class="filemeta">
+      <span>omnitask-v1.0.0.apk</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Antes de instalar</h2>
+    <ol class="steps">
+      <li>
+        <div>
+          <strong>Permite instalar desde esta fuente.</strong>
+          <span class="detail">OmniTask no está en Play Store todavía, así que Android va a pedir habilitar "instalar apps desconocidas" para el navegador o gestor de archivos que uses para abrir el .apk. Es un permiso por app, no un ajuste global.</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Descarga el archivo con el botón de arriba.</strong>
+          <span class="detail">Pesa 55.4 MB — con datos móviles puede tardar un poco.</span>
+        </div>
+      </li>
+      <li>
+        <div>
+          <strong>Ábrelo desde notificaciones o descargas.</strong>
+          <span class="detail">Confirma la instalación cuando el sistema te lo pida.</span>
+        </div>
+      </li>
+    </ol>
+
+    <div class="callout" style="margin-top: 20px;">
+      <strong>Los recordatorios push todavía no llegan</strong>
+      Esta build no tiene un proyecto de Firebase configurado, así que las notificaciones automáticas de WhatsApp/push están inactivas por ahora. El resto — calendario, actividades, contactos, pendientes por programar y notificaciones locales con la app abierta — funciona contra la API real de producción.
+    </div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Detalles técnicos</summary>
+      <dl class="kv">
+        <div class="kv-row"><dt>Versión</dt><dd>1.0.0 (build 1)</dd></div>
+        <div class="kv-row"><dt>Application ID</dt><dd>com.clinicacampbell.omnitask_app</dd></div>
+        <div class="kv-row"><dt>API de producción</dt><dd>appsintranet.esculapiosis.com/APIOmniTask</dd></div>
+        <div class="kv-row"><dt>Firma</dt><dd>keystore propio de OmniTask</dd></div>
+        <div class="kv-row"><dt>SHA-256</dt><dd>70b6e134fdbfcb5221197e002d22d370babe8ed508179321210c819d9cf64984</dd></div>
+      </dl>
+    </details>
+  </div>
+
+  <footer>
+    Código y notas de esta build en el <a href="https://github.com/WILSP1971/AppOmniTask/releases/tag/app-v1.0.0">Release app-v1.0.0</a> del repositorio.
+  </footer>
+</div>
