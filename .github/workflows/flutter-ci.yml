@@ -6,6 +6,7 @@ on:
   push:
     branches: [main]
     paths: ["omnitask_app/**"]
+  workflow_dispatch: {}
 
 jobs:
   analyze-and-test:
