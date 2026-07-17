@@ -45,6 +45,12 @@ jobs:
           psql -h localhost -U postgres -d omnitask_test -f db/02_add_refresh_tokens_table.sql
           psql -h localhost -U postgres -d omnitask_test -f db/03_stored_procedures_and_functions.sql
 
-      # Sin proyecto de pruebas para el backend todavía (a diferencia de
-      # omnitask_app, §13/§24) — cuando exista, agregar aquí
-      # `dotnet test --no-build` apuntando al Postgres de este job.
+      # OmniTask.Tests (§25): las pruebas puramente unitarias (hasher, JWT,
+      # PostgresExceptionMapper) corren siempre; las de integración usan
+      # [SkippableFact] y se saltan si TEST_DATABASE_URL no es alcanzable —
+      # aquí sí lo es, así que corren de verdad contra el Postgres del job.
+      - name: Ejecutar pruebas
+        working-directory: APIOmniTask
+        env:
+          TEST_DATABASE_URL: "Host=localhost;Port=5432;Database=omnitask_test;Username=postgres;Password=test"
+        run: dotnet test --no-build

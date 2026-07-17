@@ -3494,6 +3494,29 @@ El endpoint `PATCH /activities/{id}` ganó `clear_starts_at`/`clear_ends_at` exp
 
 `flutter analyze` termina en cero problemas. Sigue pendiente `flutterfire configure` (genera `lib/firebase_options.dart` contra el proyecto de Firebase real, §20) y el build de producción con `flutter build appbundle`/`build ipa --release --dart-define=API_BASE_URL=...` (§13, §19), que sí dependen de credenciales y del toolchain de Android/iOS reales.
 
+## §25 — Proyecto de pruebas del backend (`APIOmniTask/tests/OmniTask.Tests/`)
+
+Vive en [`APIOmniTask/tests/OmniTask.Tests/`](../APIOmniTask/tests/OmniTask.Tests/), agregado a `OmniTask.sln`. Usa xUnit + `Xunit.SkippableFact`, con una `ProjectReference` a `OmniTask.Api.csproj` (que arrastra a `Application` e `Infrastructure`).
+
+### Dos categorías de prueba, con requisitos distintos
+
+- **Unitarias puras** (`Security/Argon2PasswordHasherTests.cs`, `Security/JwtTokenFactoryTests.cs`, `Infrastructure/PostgresExceptionMapperTests.cs`) — no tocan Postgres. La última fue posible al descubrir que `Npgsql.PostgresException` expone un constructor público de 4 parámetros (`messageText, severity, invariantSeverity, sqlState`), lo que permite construir una excepción con el SQLSTATE deseado y verificar que `PostgresExceptionMapper` (§23) la traduce al código HTTP correcto — incluyendo el caso en que un SQLSTATE no reconocido debe devolver `null` para que `SqlServiceBase` relance el error original en vez de disfrazarlo.
+- **De integración real** (`Infrastructure/AuthServiceTests.cs`, `Infrastructure/ActivityServiceTests.cs`, `Infrastructure/ContactServiceTests.cs`) — instancian `AuthService`/`ActivityService`/`ContactService` de verdad contra un Postgres real, ejercitando las funciones y procedimientos de la §23 sin mocks: si el SQL y el C# se desincronizan, esto es lo primero que debería fallar, no un usuario reportándolo en producción.
+
+### `DatabaseFixture`: por qué las de integración se saltan en vez de fallar
+
+`Infrastructure/DatabaseFixture.cs` implementa `IAsyncLifetime`, arma el mismo `NpgsqlDataSourceBuilder` con los 10 mapeos de enum que `Program.cs`, y en `InitializeAsync()` intenta abrir una conexión real usando la variable de entorno `TEST_DATABASE_URL` (con un `localhost` por defecto para desarrollo local). Si la conexión falla, `IsAvailable` queda en `false` en vez de propagar la excepción. Cada prueba de integración empieza con `Skip.IfNot(_fixture.IsAvailable, ...)` — así el proyecto compila y corre igual en una máquina sin Postgres (como este sandbox de desarrollo, que no tiene Postgres/Docker/sudo disponibles) sin reportar fallos que en realidad son "no hay base de datos aquí".
+
+Casos cubiertos por las pruebas de integración, todos ejercitando reglas que viven en el SQL de la §23:
+
+- **Auth**: registro emite ambos tokens; correo duplicado → 409 (`fn_register_user`); login con contraseña incorrecta → 401; rotación de refresh token de un solo uso — reutilizar un token ya rotado debe fallar con 401, no emitir un par nuevo (`fn_rotate_refresh_token`); logout revoca el token; actualizar perfil persiste el cambio.
+- **Activities**: crear con fecha genera reminders `pending` y queda `scheduled`; crear sin fecha fuerza `unscheduled` sin reminders; reprogramar cancela (`failed`) los reminders viejos y crea los nuevos; `clear_starts_at` regresa la actividad al backlog; cancelar marca los reminders pendientes como `failed` sin enviarlos; acceder a la actividad de otro usuario → 404 (`fn_get_activity_by_id` filtra por `user_id`).
+- **Contacts**: crear contacto; borrar un contacto sin actividades asociadas; borrar un contacto con actividades asociadas → 409 (`sp_delete_contact`), para no dejar actividades con un `contact_id` colgante.
+
+### Verificado — y lo que falta por verificar
+
+`dotnet build` y `dotnet test` ya se corrieron de verdad sobre `OmniTask.sln`: **13 pruebas unitarias pasan, 16 de integración se saltan** (sin Postgres alcanzable en este entorno), 0 fallos. Lo que *no* se ha verificado todavía en este entorno es que las pruebas de integración realmente pasen contra un Postgres real con el esquema y los stored procedures aplicados — eso se decidió delegar al pipeline de CI, que sí trae su propio contenedor de Postgres (§13 del `backend-ci.yml`). `backend-ci.yml` ahora incluye un paso `dotnet test --no-build` con `TEST_DATABASE_URL` apuntando al servicio de Postgres del job, después de aplicar `schema.sql`, `02_add_refresh_tokens_table.sql` y `03_stored_procedures_and_functions.sql` — así que la primera ejecución real de estas pruebas de integración va a ser la próxima vez que corra ese workflow, no en este sandbox.
+
 ---
 
 *Documento de arquitectura v1 · 11 de julio de 2026 · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.*

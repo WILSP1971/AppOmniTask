@@ -532,6 +532,7 @@
       <a href="#backend-csharp">§22 Backend real: C#/.NET</a>
       <a href="#stored-procedures">§23 Stored procedures y functions</a>
       <a href="#flutter-real">§24 App móvil real: Flutter</a>
+      <a href="#backend-tests">§25 Proyecto de pruebas del backend</a>
     </nav>
 
     <main>
@@ -3899,10 +3900,34 @@ WHATSAPP_WEBHOOK_VERIFY_TOKEN=...</pre>
         <p><code>flutter analyze</code> termina en cero problemas. Sigue pendiente <code>flutterfire configure</code> (genera <code>lib/firebase_options.dart</code> contra el proyecto de Firebase real, §20) y el build de producción con <code>flutter build appbundle</code>/<code>build ipa --release --dart-define=API_BASE_URL=...</code> (§13, §19), que sí dependen de credenciales y del toolchain de Android/iOS reales.</p>
       </section>
 
+      <section id="backend-tests">
+        <div class="sec-head"><span class="sec-num">§25</span><h2>Proyecto de pruebas del backend (<code>APIOmniTask/tests/OmniTask.Tests/</code>)</h2></div>
+        <p>Vive en <code>APIOmniTask/tests/OmniTask.Tests/</code>, agregado a <code>OmniTask.sln</code>. Usa xUnit + <code>Xunit.SkippableFact</code>, con una <code>ProjectReference</code> a <code>OmniTask.Api.csproj</code> (que arrastra a <code>Application</code> e <code>Infrastructure</code>).</p>
+
+        <h3>Dos categorías de prueba, con requisitos distintos</h3>
+        <ul>
+          <li><b>Unitarias puras</b> (<code>Security/Argon2PasswordHasherTests.cs</code>, <code>Security/JwtTokenFactoryTests.cs</code>, <code>Infrastructure/PostgresExceptionMapperTests.cs</code>) — no tocan Postgres. La última fue posible al descubrir que <code>Npgsql.PostgresException</code> expone un constructor público de 4 parámetros (<code>messageText, severity, invariantSeverity, sqlState</code>), lo que permite construir una excepción con el SQLSTATE deseado y verificar que <code>PostgresExceptionMapper</code> (§23) la traduce al código HTTP correcto — incluyendo el caso en que un SQLSTATE no reconocido debe devolver <code>null</code> para que <code>SqlServiceBase</code> relance el error original en vez de disfrazarlo.</li>
+          <li><b>De integración real</b> (<code>Infrastructure/AuthServiceTests.cs</code>, <code>Infrastructure/ActivityServiceTests.cs</code>, <code>Infrastructure/ContactServiceTests.cs</code>) — instancian <code>AuthService</code>/<code>ActivityService</code>/<code>ContactService</code> de verdad contra un Postgres real, ejercitando las funciones y procedimientos de la §23 sin mocks: si el SQL y el C# se desincronizan, esto es lo primero que debería fallar, no un usuario reportándolo en producción.</li>
+        </ul>
+
+        <h3><code>DatabaseFixture</code>: por qué las de integración se saltan en vez de fallar</h3>
+        <p><code>Infrastructure/DatabaseFixture.cs</code> implementa <code>IAsyncLifetime</code>, arma el mismo <code>NpgsqlDataSourceBuilder</code> con los 10 mapeos de enum que <code>Program.cs</code>, y en <code>InitializeAsync()</code> intenta abrir una conexión real usando la variable de entorno <code>TEST_DATABASE_URL</code> (con un <code>localhost</code> por defecto para desarrollo local). Si la conexión falla, <code>IsAvailable</code> queda en <code>false</code> en vez de propagar la excepción. Cada prueba de integración empieza con <code>Skip.IfNot(_fixture.IsAvailable, ...)</code> — así el proyecto compila y corre igual en una máquina sin Postgres (como este sandbox de desarrollo, que no tiene Postgres/Docker/sudo disponibles) sin reportar fallos que en realidad son "no hay base de datos aquí".</p>
+
+        <p>Casos cubiertos por las pruebas de integración, todos ejercitando reglas que viven en el SQL de la §23:</p>
+        <ul>
+          <li><b>Auth</b>: registro emite ambos tokens; correo duplicado → 409 (<code>fn_register_user</code>); login con contraseña incorrecta → 401; rotación de refresh token de un solo uso — reutilizar un token ya rotado debe fallar con 401, no emitir un par nuevo (<code>fn_rotate_refresh_token</code>); logout revoca el token; actualizar perfil persiste el cambio.</li>
+          <li><b>Activities</b>: crear con fecha genera reminders <code>pending</code> y queda <code>scheduled</code>; crear sin fecha fuerza <code>unscheduled</code> sin reminders; reprogramar cancela (<code>failed</code>) los reminders viejos y crea los nuevos; <code>clear_starts_at</code> regresa la actividad al backlog; cancelar marca los reminders pendientes como <code>failed</code> sin enviarlos; acceder a la actividad de otro usuario → 404 (<code>fn_get_activity_by_id</code> filtra por <code>user_id</code>).</li>
+          <li><b>Contacts</b>: crear contacto; borrar un contacto sin actividades asociadas; borrar un contacto con actividades asociadas → 409 (<code>sp_delete_contact</code>), para no dejar actividades con un <code>contact_id</code> colgante.</li>
+        </ul>
+
+        <h3>Verificado — y lo que falta por verificar</h3>
+        <p><code>dotnet build</code> y <code>dotnet test</code> ya se corrieron de verdad sobre <code>OmniTask.sln</code>: <b>13 pruebas unitarias pasan, 16 de integración se saltan</b> (sin Postgres alcanzable en este entorno), 0 fallos. Lo que <i>no</i> se ha verificado todavía en este entorno es que las pruebas de integración realmente pasen contra un Postgres real con el esquema y los stored procedures aplicados — eso se decidió delegar al pipeline de CI, que sí trae su propio contenedor de Postgres (§13 del <code>backend-ci.yml</code>). <code>backend-ci.yml</code> ahora incluye un paso <code>dotnet test --no-build</code> con <code>TEST_DATABASE_URL</code> apuntando al servicio de Postgres del job, después de aplicar <code>schema.sql</code>, <code>02_add_refresh_tokens_table.sql</code> y <code>03_stored_procedures_and_functions.sql</code> — así que la primera ejecución real de estas pruebas de integración va a ser la próxima vez que corra ese workflow, no en este sandbox.</p>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §13 actualizada: .github/workflows/backend-ci.yml real (dotnet build verificado, 0 warnings/errores), reemplaza el ejemplo obsoleto en Python · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §25 agregada: proyecto de pruebas del backend (13 unitarias verificadas, integración vía CI) · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>
