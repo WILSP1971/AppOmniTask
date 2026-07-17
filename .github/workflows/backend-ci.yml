@@ -1,0 +1,50 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths: ["APIOmniTask/**", "db/**"]
+  push:
+    branches: [main]
+    paths: ["APIOmniTask/**", "db/**"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: omnitask_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready" --health-interval=5s --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restaurar y compilar
+        working-directory: APIOmniTask
+        run: |
+          dotnet restore
+          dotnet build --no-restore
+
+      # Valida que el esquema y las funciones/procedimientos (§3, §16, §17,
+      # §23) sigan siendo SQL válido contra un Postgres real — un `dotnet
+      # build` limpio no detecta que db/03_stored_procedures_and_functions.sql
+      # se desincronizó de lo que el C# espera.
+      - name: Aplicar esquema y stored procedures contra Postgres
+        env:
+          PGPASSWORD: test
+        run: |
+          psql -h localhost -U postgres -d omnitask_test -f db/schema.sql
+          psql -h localhost -U postgres -d omnitask_test -f db/02_add_refresh_tokens_table.sql
+          psql -h localhost -U postgres -d omnitask_test -f db/03_stored_procedures_and_functions.sql
+
+      # Sin proyecto de pruebas para el backend todavía (a diferencia de
+      # omnitask_app, §13/§24) — cuando exista, agregar aquí
+      # `dotnet test --no-build` apuntando al Postgres de este job.

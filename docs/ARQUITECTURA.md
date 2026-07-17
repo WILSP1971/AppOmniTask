@@ -1208,17 +1208,24 @@ Un principio gobierna todo el pipeline: **la imagen que corre en producción es 
 
 ### Backend — CI en cada pull request
 
-Corre contra Postgres y Redis reales como *service containers*, no mocks — para este proyecto en particular, donde la corrección depende de `TIMESTAMPTZ` y de `SELECT ... FOR UPDATE SKIP LOCKED` (§8), probar contra un Postgres real no es opcional.
+Ya es un archivo real, [`.github/workflows/backend-ci.yml`](../.github/workflows/backend-ci.yml) — reemplaza por completo el ejemplo en Python/Poetry/pytest que tenía esta sección (obsoleto desde que el backend pasó a C#/.NET, §22/§23). `dotnet build` se verificó de verdad: una reconstrucción limpia (sin `bin/`/`obj/` previos) de `APIOmniTask/OmniTask.sln` termina en **0 warnings, 0 errores**.
+
+El job también aplica `db/schema.sql`, `db/02_add_refresh_tokens_table.sql` y `db/03_stored_procedures_and_functions.sql` contra un Postgres real como *service container* — un `dotnet build` limpio no detecta que las funciones/procedimientos se desincronizaron de lo que el C# espera (§23), así que validar el SQL en el mismo job importa tanto como compilar. Esta parte específica (el `psql` contra el contenedor de Postgres de GitHub Actions) no se pudo verificar en este entorno de trabajo por no tener PostgreSQL/Docker disponibles aquí — sí se confirmó que el SQL es el mismo ya revisado en la §23.
+
+Todavía no hay un proyecto de pruebas para el backend (a diferencia de `omnitask_app`, que ya tiene 21, §13/§24) — el workflow lo deja anotado como siguiente paso.
 
 ```yaml
-# .github/workflows/ci.yml
-name: CI
+# .github/workflows/backend-ci.yml
+name: Backend CI
 on:
   pull_request:
-    paths: ["backend/**"]
+    paths: ["APIOmniTask/**", "db/**"]
+  push:
+    branches: [main]
+    paths: ["APIOmniTask/**", "db/**"]
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -1229,22 +1236,22 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd="pg_isready" --health-interval=5s --health-retries=5
-      redis:
-        image: redis:7
-        ports: ["6379:6379"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install poetry && poetry install
-      - run: poetry run ruff check .
-      - run: poetry run alembic upgrade head
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - name: Restaurar y compilar
+        working-directory: APIOmniTask
+        run: |
+          dotnet restore
+          dotnet build --no-restore
+      - name: Aplicar esquema y stored procedures contra Postgres
         env:
-          DATABASE_URL: postgresql://postgres:test@localhost:5432/omnitask_test
-      - run: poetry run pytest --cov=app
-        env:
-          DATABASE_URL: postgresql://postgres:test@localhost:5432/omnitask_test
-          REDIS_URL: redis://localhost:6379/0
+          PGPASSWORD: test
+        run: |
+          psql -h localhost -U postgres -d omnitask_test -f db/schema.sql
+          psql -h localhost -U postgres -d omnitask_test -f db/02_add_refresh_tokens_table.sql
+          psql -h localhost -U postgres -d omnitask_test -f db/03_stored_procedures_and_functions.sql
 ```
 
 ### Backend — deploy automático a staging
