@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:syncfusion_localizations/syncfusion_localizations.dart';
 
 import 'core/router/app_router.dart';
+import 'core/theme/app_theme.dart';
 import 'features/notifications/application/local_notifications_service.dart';
 import 'features/notifications/application/push_message_listener.dart';
 
@@ -17,9 +20,11 @@ Future<void> main() async {
 
   final container = ProviderContainer();
   await container.read(localNotificationsServiceProvider).initialize();
-  container.read(pushMessageListenerProvider); // servicio de proceso completo (§17)
+  container
+      .read(pushMessageListenerProvider); // servicio de proceso completo (§17)
 
-  runApp(UncontrolledProviderScope(container: container, child: const OmniTaskApp()));
+  runApp(UncontrolledProviderScope(
+      container: container, child: const OmniTaskApp()));
 }
 
 class OmniTaskApp extends ConsumerWidget {
@@ -32,7 +37,15 @@ class OmniTaskApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'OmniTask',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: Colors.teal, useMaterial3: true),
+      theme: AppTheme.light,
+      localizationsDelegates: const [
+        SfGlobalLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('es', 'CO')],
+      locale: const Locale('es', 'CO'),
       routerConfig: router,
     );
   }

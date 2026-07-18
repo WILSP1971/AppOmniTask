@@ -20,17 +20,50 @@ class BacklogScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Pendientes por programar')),
       body: backlogAsync.when(
         data: (items) => items.isEmpty
-            ? const Center(child: Text('No tienes actividades pendientes por programar'))
-            : ListView.builder(
-                itemCount: items.length,
-                itemBuilder: (context, i) => ListTile(
-                  title: Text(items[i].title),
-                  subtitle: Text(items[i].description ?? ''),
-                  trailing: TextButton(
-                    child: const Text('Programar'),
-                    onPressed: () => context.push('/activities/${items[i].id}/edit'),
-                  ),
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.event_available_outlined,
+                        size: 48, color: Theme.of(context).colorScheme.outline),
+                    const SizedBox(height: 12),
+                    const Text(
+                        'No tienes actividades pendientes por programar'),
+                  ],
                 ),
+              )
+            : ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: items.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, i) {
+                  final item = items[i];
+                  return Card(
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      leading: CircleAvatar(
+                        backgroundColor:
+                            Theme.of(context).colorScheme.primaryContainer,
+                        child: Icon(Icons.event_busy_outlined,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onPrimaryContainer),
+                      ),
+                      title: Text(item.title,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: (item.description?.isNotEmpty ?? false)
+                          ? Text(item.description!)
+                          : null,
+                      trailing: FilledButton.tonal(
+                        onPressed: () =>
+                            context.push('/activities/${item.id}/edit'),
+                        child: const Text('Programar'),
+                      ),
+                      onTap: () => context.push('/activities/${item.id}'),
+                    ),
+                  );
+                },
               ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(

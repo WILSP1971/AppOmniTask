@@ -40,48 +40,73 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       appBar: AppBar(title: const Text('Crear cuenta')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Nombre completo'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'Obligatorio' : null,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextFormField(
+                    controller: _nameController,
+                    decoration:
+                        const InputDecoration(labelText: 'Nombre completo'),
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Obligatorio' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: 'Correo'),
+                    validator: (v) => (v == null || !v.contains('@'))
+                        ? 'Correo inválido'
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                        labelText: 'Celular', hintText: '+57 300 000 0000'),
+                    validator: (v) => (v == null || !v.startsWith('+'))
+                        ? 'Incluye el indicativo, ej. +57'
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Contraseña'),
+                    validator: (v) => (v == null || v.length < 8)
+                        ? 'Mínimo 8 caracteres'
+                        : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _confirmController,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                        labelText: 'Confirmar contraseña'),
+                    validator: (v) => (v != _passwordController.text)
+                        ? 'Las contraseñas no coinciden'
+                        : null,
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed: authState.isLoading ? null : _submit,
+                    child: authState.isLoading
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Crear cuenta'),
+                  ),
+                ],
               ),
-              TextFormField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(labelText: 'Correo'),
-                validator: (v) => (v == null || !v.contains('@')) ? 'Correo inválido' : null,
-              ),
-              TextFormField(
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Celular', hintText: '+57 300 000 0000'),
-                validator: (v) =>
-                    (v == null || !v.startsWith('+')) ? 'Incluye el indicativo, ej. +57' : null,
-              ),
-              TextFormField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Contraseña'),
-                validator: (v) => (v == null || v.length < 8) ? 'Mínimo 8 caracteres' : null,
-              ),
-              TextFormField(
-                controller: _confirmController,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: 'Confirmar contraseña'),
-                validator: (v) =>
-                    (v != _passwordController.text) ? 'Las contraseñas no coinciden' : null,
-              ),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: authState.isLoading ? null : _submit,
-                child: const Text('Crear cuenta'),
-              ),
-            ],
+            ),
           ),
         ),
       ),

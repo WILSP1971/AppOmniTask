@@ -375,7 +375,7 @@ packages:
     source: hosted
     version: "3.1.1"
   flutter_localizations:
-    dependency: transitive
+    dependency: "direct main"
     description: flutter
     source: sdk
     version: "0.0.0"
@@ -795,7 +795,7 @@ packages:
     source: hosted
     version: "34.1.31"
   syncfusion_localizations:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: syncfusion_localizations
       sha256: "8fca17ed61ea731a62a0a040e9a3eecda622b156530d7f3605ddbc96ac015466"

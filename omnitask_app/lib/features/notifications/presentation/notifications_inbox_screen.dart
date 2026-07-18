@@ -32,9 +32,11 @@ class NotificationsInboxScreen extends ConsumerWidget {
         data: (paged) => paged.items.isEmpty
             ? const Center(child: Text('No tienes notificaciones todavía'))
             : ListView.separated(
+                padding: const EdgeInsets.all(16),
                 itemCount: paged.items.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (context, i) => _NotificationTile(item: paged.items[i]),
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, i) =>
+                    _NotificationTile(item: paged.items[i]),
               ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
@@ -61,29 +63,40 @@ class _NotificationTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isUnread = item.acknowledgedAt == null;
+    final colorScheme = Theme.of(context).colorScheme;
 
-    return ListTile(
-      tileColor:
-          isUnread ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
-      leading: Icon(
-        item.channel == 'whatsapp' ? Icons.chat_outlined : Icons.notifications_outlined,
+    return Card(
+      color: isUnread
+          ? colorScheme.primaryContainer.withValues(alpha: 0.35)
+          : null,
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: colorScheme.surfaceContainerHighest,
+          child: Icon(
+            item.channel == 'whatsapp'
+                ? Icons.chat_outlined
+                : Icons.notifications_outlined,
+            color: colorScheme.primary,
+          ),
+        ),
+        title: Text(
+          item.summary,
+          style: TextStyle(
+              fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal),
+        ),
+        subtitle: Text(_relativeTime(item.createdAt)),
+        trailing: _StatusDot(status: item.status),
+        onTap: () async {
+          if (isUnread) {
+            await ref.read(notificationRepositoryProvider).acknowledge(item.id);
+            ref.invalidate(notificationsInboxProvider);
+            ref.invalidate(unreadNotificationsCountProvider);
+          }
+          if (item.activityId != null && context.mounted) {
+            context.push('/activities/${item.activityId}');
+          }
+        },
       ),
-      title: Text(
-        item.summary,
-        style: TextStyle(fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal),
-      ),
-      subtitle: Text(_relativeTime(item.createdAt)),
-      trailing: _StatusDot(status: item.status),
-      onTap: () async {
-        if (isUnread) {
-          await ref.read(notificationRepositoryProvider).acknowledge(item.id);
-          ref.invalidate(notificationsInboxProvider);
-          ref.invalidate(unreadNotificationsCountProvider);
-        }
-        if (item.activityId != null && context.mounted) {
-          context.push('/activities/${item.activityId}');
-        }
-      },
     );
   }
 }

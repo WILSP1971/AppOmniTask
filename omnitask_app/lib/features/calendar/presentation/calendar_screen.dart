@@ -6,9 +6,11 @@ import 'package:syncfusion_flutter_calendar/calendar.dart';
 
 import '../../../core/navigation/app_drawer.dart';
 import '../../../models/activity.dart';
+import '../../backlog/application/unscheduled_activities_provider.dart';
 import '../../notifications/application/notifications_providers.dart';
 import '../application/activities_for_range_provider.dart';
 import '../application/visible_range_provider.dart';
+import 'activity_colors.dart';
 
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
@@ -45,7 +47,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     // recalcular en cada micro-scroll dentro de la misma ventana.
     final range = view == CalendarView.schedule
         ? _scheduleWindowFrom(details.visibleDates.first)
-        : DateTimeRange(start: details.visibleDates.first, end: details.visibleDates.last);
+        : DateTimeRange(
+            start: details.visibleDates.first, end: details.visibleDates.last);
 
     // onViewChanged se dispara en cada layout del calendario, no solo al
     // navegar o cambiar de vista; solo actualizar (y refetch) si el rango
@@ -58,7 +61,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   Widget build(BuildContext context) {
     final activitiesAsync = ref.watch(activitiesForRangeProvider);
-    final unreadCount = ref.watch(unreadNotificationsCountProvider).valueOrNull ?? 0;
+    final unreadCount =
+        ref.watch(unreadNotificationsCountProvider).valueOrNull ?? 0;
+    final unscheduledCount =
+        ref.watch(unscheduledActivitiesProvider).valueOrNull?.length ?? 0;
 
     return Scaffold(
       drawer: const AppDrawer(),
@@ -66,6 +72,16 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         title: const Text('Agenda'),
         actions: [
           IconButton(
+            tooltip: 'Pendientes por programar',
+            icon: Badge(
+              label: Text('$unscheduledCount'),
+              isLabelVisible: unscheduledCount > 0,
+              child: const Icon(Icons.inbox_outlined),
+            ),
+            onPressed: () => context.push('/backlog'),
+          ),
+          IconButton(
+            tooltip: 'Notificaciones',
             icon: Badge(
               label: Text('$unreadCount'),
               isLabelVisible: unreadCount > 0,
@@ -74,10 +90,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             onPressed: () => context.push('/notifications'),
           ),
           IconButton(
-            icon: const Icon(Icons.inbox_outlined),
-            onPressed: () => context.push('/backlog'),
-          ),
-          IconButton(
+            tooltip: 'Ajustes',
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => context.push('/settings'),
           ),
@@ -131,7 +144,8 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     );
   }
 
-  Widget _buildAppointment(BuildContext context, CalendarAppointmentDetails details) {
+  Widget _buildAppointment(
+      BuildContext context, CalendarAppointmentDetails details) {
     if (details.isMoreAppointmentRegion) {
       return _MoreAppointmentsChip(count: details.appointments.length);
     }
@@ -148,21 +162,6 @@ DateTimeRange _scheduleWindowFrom(DateTime anchor) {
   final start = DateTime(anchor.year, anchor.month, 1);
   final end = DateTime(start.year, start.month + 3, 1);
   return DateTimeRange(start: start, end: end);
-}
-
-/// Color por tipo de actividad (§14): mismo criterio que el picker de tipo en
-/// el formulario de edición (meeting/appointment/task), para que de un
-/// vistazo se distinga qué es cada bloque en la rejilla.
-Color _colorForActivityType(String type) {
-  switch (type) {
-    case 'meeting':
-      return const Color(0xFF3F51B5);
-    case 'task':
-      return const Color(0xFFEF6C00);
-    case 'appointment':
-    default:
-      return const Color(0xFF0E7C72);
-  }
 }
 
 /// Caja de la cita en Día/Semana — reemplaza el render por defecto de
@@ -182,13 +181,17 @@ class _TimeSlotAppointmentBox extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 1.5, vertical: 1),
       padding: EdgeInsets.symmetric(horizontal: 6, vertical: compact ? 1 : 3),
       decoration: BoxDecoration(
-        color: _colorForActivityType(activity.type),
+        color: colorForActivityType(activity.type),
         borderRadius: BorderRadius.circular(6),
       ),
       alignment: Alignment.topLeft,
       child: Text(
         activity.title,
-        style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600, height: 1.15),
+        style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            height: 1.15),
         overflow: TextOverflow.ellipsis,
         maxLines: compact ? 1 : 3,
       ),
@@ -222,7 +225,7 @@ class _ScheduleAppointmentTile extends StatelessWidget {
             width: 4,
             height: 36,
             decoration: BoxDecoration(
-              color: _colorForActivityType(activity.type),
+              color: colorForActivityType(activity.type),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -234,13 +237,16 @@ class _ScheduleAppointmentTile extends StatelessWidget {
               children: [
                 Text(
                   activity.title,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w600),
                   overflow: TextOverflow.ellipsis,
                 ),
                 if (timeLabel != null)
                   Text(
                     timeLabel,
-                    style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.outline),
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).colorScheme.outline),
                   ),
               ],
             ),
@@ -263,7 +269,8 @@ class _MoreAppointmentsChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: Text(
         '+$count más',
-        style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary),
+        style: TextStyle(
+            fontSize: 11, color: Theme.of(context).colorScheme.primary),
         overflow: TextOverflow.ellipsis,
       ),
     );
@@ -279,7 +286,8 @@ class _ActivityDataSource extends CalendarDataSource {
   }
 
   @override
-  DateTime getStartTime(int index) => (appointments![index] as Activity).startsAt!.toLocal();
+  DateTime getStartTime(int index) =>
+      (appointments![index] as Activity).startsAt!.toLocal();
 
   @override
   DateTime getEndTime(int index) =>

@@ -29,7 +29,8 @@ class ActivityDetailScreen extends ConsumerWidget {
             children: [
               const Text('No se pudo cargar la actividad'),
               TextButton(
-                onPressed: () => ref.invalidate(activityDetailProvider(activityId)),
+                onPressed: () =>
+                    ref.invalidate(activityDetailProvider(activityId)),
                 child: const Text('Reintentar'),
               ),
             ],
@@ -39,7 +40,7 @@ class ActivityDetailScreen extends ConsumerWidget {
       floatingActionButton: activityAsync.maybeWhen(
         data: (activity) => FloatingActionButton.extended(
           icon: const Icon(Icons.edit_outlined),
-          label: Text(activity.startsAt == null ? 'Programar' : 'Editar'),
+          label: Text(activity.startsAt == null ? 'Programar' : 'Reprogramar'),
           onPressed: () => context.push('/activities/$activityId/edit'),
         ),
         orElse: () => null,
@@ -59,37 +60,60 @@ class _DetailBody extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _StatusChip(status: activity.status),
-        const SizedBox(height: 8),
-        Text(activity.title, style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 8),
-        if (activity.startsAt != null)
-          Text(localFormat.format(activity.startsAt!.toLocal()))
-        else
-          _UnscheduledBanner(activityId: activity.id),
-        if (activity.location != null) ...[
-          const SizedBox(height: 4),
-          Text(activity.location!),
-        ],
-        if (activity.description != null) ...[
-          const SizedBox(height: 12),
-          Text(activity.description!),
-        ],
-        const Divider(height: 32),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _StatusChip(status: activity.status),
+                const SizedBox(height: 12),
+                Text(activity.title,
+                    style: Theme.of(context).textTheme.headlineSmall),
+                const SizedBox(height: 10),
+                if (activity.startsAt != null)
+                  _InfoRow(
+                    icon: Icons.schedule_outlined,
+                    text: localFormat.format(activity.startsAt!.toLocal()),
+                  )
+                else
+                  _UnscheduledBanner(activityId: activity.id),
+                if (activity.location != null) ...[
+                  const SizedBox(height: 8),
+                  _InfoRow(
+                      icon: Icons.place_outlined, text: activity.location!),
+                ],
+                if (activity.description != null) ...[
+                  const SizedBox(height: 12),
+                  Text(activity.description!),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
         Text('Recordatorios', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
         if (activity.reminders.isEmpty)
-          const Padding(
-            padding: EdgeInsets.only(top: 8),
-            child: Text('Sin recordatorios programados'),
-          )
+          Text('Sin recordatorios programados',
+              style: TextStyle(color: Theme.of(context).colorScheme.outline))
         else
-          ...activity.reminders.map((r) => ListTile(
-                dense: true,
-                leading: Icon(r.channel == 'whatsapp' ? Icons.chat_outlined : Icons.notifications_outlined),
-                title: Text(DateFormat('d MMM, HH:mm').format(r.remindAt.toLocal())),
-                trailing: Text(r.status),
-              )),
-        const Divider(height: 32),
+          Card(
+            child: Column(
+              children: activity.reminders
+                  .map((r) => ListTile(
+                        dense: true,
+                        leading: Icon(r.channel == 'whatsapp'
+                            ? Icons.chat_outlined
+                            : Icons.notifications_outlined),
+                        title: Text(DateFormat('d MMM, HH:mm')
+                            .format(r.remindAt.toLocal())),
+                        trailing: Text(r.status),
+                      ))
+                  .toList(),
+            ),
+          ),
+        const SizedBox(height: 16),
         _ActionRow(activity: activity),
       ],
     );
@@ -108,7 +132,25 @@ class _StatusChip extends StatelessWidget {
       'cancelled' => ('Cancelada', Colors.red),
       _ => ('Pendiente por programar', Colors.orange),
     };
-    return Chip(label: Text(label), backgroundColor: color.withValues(alpha: 0.15));
+    return Chip(
+        label: Text(label), backgroundColor: color.withValues(alpha: 0.15));
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.icon, required this.text});
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+        const SizedBox(width: 8),
+        Expanded(child: Text(text)),
+      ],
+    );
   }
 }
 
@@ -141,8 +183,10 @@ class _ActionRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final controller = ref.watch(activityActionsControllerProvider(activity.id).notifier);
-    final actionState = ref.watch(activityActionsControllerProvider(activity.id));
+    final controller =
+        ref.watch(activityActionsControllerProvider(activity.id).notifier);
+    final actionState =
+        ref.watch(activityActionsControllerProvider(activity.id));
 
     return Wrap(
       spacing: 12,
@@ -157,21 +201,26 @@ class _ActionRow extends ConsumerWidget {
         // confundiría sin agregar capacidad real.
         if (activity.status != 'cancelled')
           OutlinedButton(
-            onPressed: actionState.isLoading ? null : () => _confirmCancel(context, controller),
+            onPressed: actionState.isLoading
+                ? null
+                : () => _confirmCancel(context, controller),
             child: const Text('Cancelar'),
           ),
       ],
     );
   }
 
-  Future<void> _confirmCancel(BuildContext context, ActivityActionsController controller) async {
+  Future<void> _confirmCancel(
+      BuildContext context, ActivityActionsController controller) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('¿Cancelar esta actividad?'),
         content: const Text('Los recordatorios pendientes no se enviarán.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Volver')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Volver')),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Cancelar actividad'),
