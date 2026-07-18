@@ -7,20 +7,24 @@ import 'package:omnitask_app/models/activity_draft.dart';
 /// respuesta con un eco del cuerpo enviado para poder inspeccionarlo.
 class _RecordingInterceptor extends Interceptor {
   RequestOptions? lastRequest;
+  final List<RequestOptions> requests = [];
+
+  /// Permite a cada prueba decidir la respuesta según la petición (p.ej. según
+  /// `page`) — por defecto, un eco de una sola actividad, como antes.
+  Response Function(RequestOptions options)? responseBuilder;
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
     lastRequest = options;
-    handler.resolve(Response(
-      requestOptions: options,
-      statusCode: 200,
-      data: _fakeActivityJson(),
-    ));
+    requests.add(options);
+    final response = responseBuilder?.call(options) ??
+        Response(requestOptions: options, statusCode: 200, data: _fakeActivityJson());
+    handler.resolve(response);
   }
 }
 
-Map<String, dynamic> _fakeActivityJson() => {
-      'id': 'a1',
+Map<String, dynamic> _fakeActivityJson({String id = 'a1'}) => {
+      'id': id,
       'user_id': 'u1',
       'contact_id': null,
       'type': 'appointment',
@@ -45,6 +49,54 @@ void main() {
     recorder = _RecordingInterceptor();
     dio.interceptors.add(recorder);
     repository = ActivityRepository(dio);
+  });
+
+  group('fetchActivities — paginación (vistas de Mes/Agenda, §27)', () {
+    test('una sola página alcanza para cubrir el total', () async {
+      recorder.responseBuilder = (options) => Response(
+            requestOptions: options,
+            statusCode: 200,
+            data: {
+              'items': [_fakeActivityJson()],
+              'page': 1,
+              'limit': 100,
+              'total': 1,
+            },
+          );
+
+      final result = await repository.fetchActivities(
+        from: DateTime(2026, 7, 1),
+        to: DateTime(2026, 7, 8),
+      );
+
+      expect(recorder.requests, hasLength(1));
+      expect(result.items, hasLength(1));
+    });
+
+    test('junta todas las páginas cuando el total supera una sola página', () async {
+      recorder.responseBuilder = (options) {
+        final page = int.parse(options.queryParameters['page'].toString());
+        final items = page == 1
+            ? List.generate(100, (i) => _fakeActivityJson(id: 'a$i'))
+            : List.generate(50, (i) => _fakeActivityJson(id: 'b$i'));
+        return Response(
+          requestOptions: options,
+          statusCode: 200,
+          data: {'items': items, 'page': page, 'limit': 100, 'total': 150},
+        );
+      };
+
+      final result = await repository.fetchActivities(
+        from: DateTime(2026, 7, 1),
+        to: DateTime(2026, 8, 1),
+      );
+
+      expect(recorder.requests, hasLength(2));
+      expect(recorder.requests[0].queryParameters['page'], 1);
+      expect(recorder.requests[1].queryParameters['page'], 2);
+      expect(result.items, hasLength(150));
+      expect(result.total, 150);
+    });
   });
 
   group('create', () {

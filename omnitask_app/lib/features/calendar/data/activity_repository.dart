@@ -23,22 +23,42 @@ class ActivityRepository {
     return Activity.fromJson(response.data as Map<String, dynamic>);
   }
 
+  /// Pagina sola contra `?page&limit` hasta juntar las `total` actividades que
+  /// reporta el backend (§6) — las vistas de Mes y Agenda cubren rangos de
+  /// semanas/meses que fácilmente superan el límite de 50 por página que trae
+  /// el endpoint por defecto; sin esto, esas vistas perderían actividades en
+  /// silencio a partir de la 51.
   Future<PagedResponse<Activity>> fetchActivities({
     required DateTime from,
     required DateTime to,
     String? type,
     String? status,
   }) async {
-    final response = await _dio.get('/activities', queryParameters: {
-      'from': from.toUtc().toIso8601String(),
-      'to': to.toUtc().toIso8601String(),
-      if (type != null) 'type': type,
-      if (status != null) 'status': status,
-    });
-    return PagedResponse.fromJson(
-      response.data as Map<String, dynamic>,
-      (json) => Activity.fromJson(json as Map<String, dynamic>),
-    );
+    const pageSize = 100;
+    final items = <Activity>[];
+    var page = 1;
+    var total = 0;
+
+    while (true) {
+      final response = await _dio.get('/activities', queryParameters: {
+        'from': from.toUtc().toIso8601String(),
+        'to': to.toUtc().toIso8601String(),
+        if (type != null) 'type': type,
+        if (status != null) 'status': status,
+        'page': page,
+        'limit': pageSize,
+      });
+      final paged = PagedResponse.fromJson(
+        response.data as Map<String, dynamic>,
+        (json) => Activity.fromJson(json as Map<String, dynamic>),
+      );
+      items.addAll(paged.items);
+      total = paged.total;
+      if (paged.items.isEmpty || items.length >= total) break;
+      page++;
+    }
+
+    return PagedResponse(items: items, page: 1, limit: items.length, total: total);
   }
 
   Future<List<Activity>> fetchUnscheduled() async {
