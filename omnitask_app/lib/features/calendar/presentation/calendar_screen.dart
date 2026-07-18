@@ -39,6 +39,10 @@ class CalendarScreen extends ConsumerWidget {
         ],
       ),
       body: activitiesAsync.when(
+        // Mantener el calendario montado durante el refetch por cambio de
+        // rango: sin esto, `when` vuelve a `loading`, desmonta el SfCalendar y
+        // al recrearse vuelve a disparar onViewChanged -> bucle (titileo).
+        skipLoadingOnReload: true,
         data: (activities) => SfCalendar(
           view: CalendarView.week,
           dataSource: _ActivityDataSource(activities),
@@ -47,7 +51,12 @@ class CalendarScreen extends ConsumerWidget {
               start: details.visibleDates.first,
               end: details.visibleDates.last,
             );
-            ref.read(visibleRangeProvider.notifier).setRange(range);
+            // onViewChanged se dispara en cada layout del calendario, no solo
+            // al navegar de semana; solo actualizar (y refetch) si el rango
+            // realmente cambió, para no entrar en bucle.
+            if (range != ref.read(visibleRangeProvider)) {
+              ref.read(visibleRangeProvider.notifier).setRange(range);
+            }
           },
           onTap: (details) {
             final activity = details.appointments?.first as Activity?;
