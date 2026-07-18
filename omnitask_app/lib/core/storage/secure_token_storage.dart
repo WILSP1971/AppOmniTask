@@ -1,29 +1,28 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// Access/refresh token en el almacén seguro del dispositivo (§15). El
-/// interceptor de Dio y el AuthNotifier son los únicos que lo tocan.
+/// Access/refresh token solo en memoria del proceso — deliberado, no un
+/// descuido: si se guardaran en disco (keystore/keychain), la sesión
+/// sobreviviría a que el usuario deslice la app para cerrarla. Al morir el
+/// proceso (cierre real, no solo pasar a segundo plano) no queda nada que
+/// restaurar y la próxima apertura pide login de nuevo.
 class SecureTokenStorage {
-  SecureTokenStorage(this._storage);
-  final FlutterSecureStorage _storage;
-
-  static const _accessTokenKey = 'access_token';
-  static const _refreshTokenKey = 'refresh_token';
+  String? _accessToken;
+  String? _refreshToken;
 
   Future<void> saveTokens(String accessToken, String refreshToken) async {
-    await _storage.write(key: _accessTokenKey, value: accessToken);
-    await _storage.write(key: _refreshTokenKey, value: refreshToken);
+    _accessToken = accessToken;
+    _refreshToken = refreshToken;
   }
 
-  Future<String?> readAccessToken() => _storage.read(key: _accessTokenKey);
-  Future<String?> readRefreshToken() => _storage.read(key: _refreshTokenKey);
+  Future<String?> readAccessToken() async => _accessToken;
+  Future<String?> readRefreshToken() async => _refreshToken;
 
   Future<void> clear() async {
-    await _storage.delete(key: _accessTokenKey);
-    await _storage.delete(key: _refreshTokenKey);
+    _accessToken = null;
+    _refreshToken = null;
   }
 }
 
 final secureTokenStorageProvider = Provider<SecureTokenStorage>(
-  (ref) => SecureTokenStorage(const FlutterSecureStorage()),
+  (ref) => SecureTokenStorage(),
 );

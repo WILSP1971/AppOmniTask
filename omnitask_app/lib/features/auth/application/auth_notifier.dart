@@ -21,7 +21,7 @@ class AuthNotifier extends _$AuthNotifier {
   }
 
   Future<AuthState> _restoreSession() async {
-    final refreshed = await refreshSession();
+    final refreshed = await _tryRefresh();
     if (!refreshed) return const AuthState.unauthenticated();
 
     final user = await ref.read(authRepositoryProvider).fetchMe();
@@ -65,9 +65,11 @@ class AuthNotifier extends _$AuthNotifier {
     });
   }
 
-  /// Usada tanto por el interceptor de Dio ante un 401 (core/network) como
-  /// por build() al arrancar la app — la misma función, dos disparadores.
-  Future<bool> refreshSession() async {
+  /// Solo el efecto secundario (leer/guardar/limpiar tokens), sin tocar
+  /// `state` — build() la llama antes de haber retornado un valor, y mutar
+  /// `state` en ese punto corrompe el ciclo de vida del provider (quedaba
+  /// atascado entre restaurar sesión y redirigir, el "loop" al abrir la app).
+  Future<bool> _tryRefresh() async {
     final storage = ref.read(secureTokenStorageProvider);
     final refreshToken = await storage.readRefreshToken();
     if (refreshToken == null) return false;
@@ -79,9 +81,17 @@ class AuthNotifier extends _$AuthNotifier {
       return true;
     } catch (_) {
       await storage.clear();
-      state = const AsyncData(AuthState.unauthenticated());
       return false;
     }
+  }
+
+  /// Usada por el interceptor de Dio ante un 401 (core/network) — a
+  /// diferencia de _tryRefresh(), build() ya terminó en este punto, así que
+  /// sí es seguro mutar `state` para forzar el logout reactivo.
+  Future<bool> refreshSession() async {
+    final refreshed = await _tryRefresh();
+    if (!refreshed) state = const AsyncData(AuthState.unauthenticated());
+    return refreshed;
   }
 
   Future<void> logout() async {
