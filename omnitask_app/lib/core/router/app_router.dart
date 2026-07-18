@@ -9,6 +9,7 @@ import '../../features/auth/application/auth_notifier.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/auth/presentation/register_screen.dart';
 import '../../features/backlog/presentation/backlog_screen.dart';
+import '../../features/calendar/presentation/activities_by_date_screen.dart';
 import '../../features/calendar/presentation/activity_detail_screen.dart';
 import '../../features/calendar/presentation/activity_edit_screen.dart';
 import '../../features/calendar/presentation/calendar_screen.dart';
@@ -51,6 +52,10 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/register', builder: (context, state) => const RegisterScreen()),
       GoRoute(path: '/', builder: (context, state) => const CalendarScreen()),
       GoRoute(path: '/backlog', builder: (context, state) => const BacklogScreen()),
+      GoRoute(
+        path: '/consultas/por-fecha',
+        builder: (context, state) => const ActivitiesByDateScreen(),
+      ),
       GoRoute(
         path: '/activities/new',
         builder: (context, state) => const ActivityEditScreen(),

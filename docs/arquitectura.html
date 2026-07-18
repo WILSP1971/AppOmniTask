@@ -534,6 +534,8 @@
       <a href="#flutter-real">§24 App móvil real: Flutter</a>
       <a href="#backend-tests">§25 Proyecto de pruebas del backend</a>
       <a href="#android-release">§26 Primer release de Android instalable</a>
+      <a href="#calendario-vistas">§27 Calendario: vistas Día/Semana/Mes/Agenda</a>
+      <a href="#menu-lateral">§28 Menú lateral y regla de autorización permanente</a>
     </nav>
 
     <main>
@@ -4036,10 +4038,50 @@ jobs:
         <p>No se pudo disparar este workflow de verdad en este entorno (crear un tag y esperar a que GitHub Actions lo corra excede lo que se puede verificar aquí) — quedó revisado línea por línea contra lo que ya se hizo a mano en esta misma sección, pero su primera ejecución real será el próximo tag <code>app-v*.*.*</code> que se empuje.</p>
       </section>
 
+      <section id="calendario-vistas">
+        <div class="sec-head"><span class="sec-num">§27</span><h2>Calendario: vistas Día/Semana/Mes/Agenda, scroll a la hora actual</h2></div>
+        <p>Motivado por fallas reales reportadas ya en producción (v1.0.4): solo existía la vista de semana, una cita de la tarde/noche quedaba enterrada al fondo de la rejilla porque la vista siempre abría arriba, y la caja de la cita en la última columna se veía recortada/poco legible.</p>
+        <ul>
+          <li><b>Selector de vistas</b>: <code>allowedViews: [day, week, month, schedule]</code> en <code>SfCalendar</code> — el propio header de Syncfusion ofrece el switcher, no hizo falta un control propio.</li>
+          <li><b>Agenda</b> (<code>CalendarView.schedule</code>) como forma principal de ver "qué tengo hoy/próximo": lista agrupada por día.</li>
+          <li><b>Apertura centrada en la hora actual</b>: <code>initialDisplayDate: DateTime.now()</code> en vez de dejar que la vista abra en la parte de arriba de la rejilla.</li>
+          <li><b>Caja de la cita rehecha</b> vía <code>appointmentBuilder</code> propio (color por tipo de actividad, texto con elipsis, límites explícitos) en vez del render por defecto de Syncfusion, que es lo que se veía recortado.</li>
+        </ul>
+        <p>Dos cuidados explícitos para no reintroducir el bucle de recarga que ya se había corregido antes (v1.0.4, <code>skipLoadingOnReload: true</code> + <code>if (range != actual) setRange(...)</code>):</p>
+        <ul>
+          <li>Agenda no reporta un rango visible en <code>onViewChanged</code> como las demás vistas — reporta un solo <code>visibleDates</code> (el día ancla). Pedir <code>from == to</code> habría dejado la lista vacía, así que en su lugar se pide una ventana de 3 meses hacia adelante, redondeada a inicio de mes — la misma guarda "solo actualizar si el rango cambió" sigue funcionando porque la ventana no cambia con cada micro-scroll dentro del mismo mes.</li>
+          <li><code>ActivityRepository.fetchActivities</code> ahora pagina de verdad (100 por página) hasta juntar el <code>total</code> que reporta el backend, en vez de quedarse con los 50 del límite por defecto del endpoint — necesario porque Mes/Agenda cubren rangos donde fácilmente hay más de 50 actividades.</li>
+        </ul>
+        <p>Verificado con <code>flutter analyze</code> (limpio) y 26/26 pruebas (2 nuevas de paginación). El release <code>app-v1.0.5</code> se compiló y firmó con el mismo keystore — no se pudo instalar en un dispositivo real dentro de este entorno para confirmar visualmente el resultado.</p>
+      </section>
+
+      <section id="menu-lateral">
+        <div class="sec-head"><span class="sec-num">§28</span><h2>Menú lateral, regla de autorización permanente, y un bug de locale encontrado de paso</h2></div>
+
+        <h3>Menú lateral (Calendario / Consultas / Cerrar sesión)</h3>
+        <p><code>AppDrawer</code> (<code>lib/core/navigation/app_drawer.dart</code>) se agregó a las tres pantallas que el propio menú enlaza — Calendario, Backlog y la nueva pantalla de consulta — para que moverse entre ellas sea consistente, sin duplicar el menú en pantallas más profundas (detalle, edición, ajustes) que ya tienen su propia navegación:</p>
+        <ul>
+          <li><b>Calendario</b> → <code>/</code> (donde la app ya iniciaba).</li>
+          <li><b>Consultas</b> (submenú):
+            <ul>
+              <li><b>Actividades calendario según fecha</b> → pantalla nueva, <code>/consultas/por-fecha</code> (<code>activities_by_date_screen.dart</code> + <code>activitiesByDateProvider</code>, family por día): elegir un día puntual y ver esa lista, en vez de navegar la rejilla del calendario.</li>
+              <li><b>Actividades sin programar</b> → <code>/backlog</code>, ya existente.</li>
+            </ul>
+          </li>
+          <li><b>Cerrar sesión</b> → mismo diálogo de confirmación que ya tenía Ajustes (§16), factorizado a <code>core/auth/logout_action.dart</code> para no duplicarlo entre el menú y Ajustes.</li>
+        </ul>
+
+        <h3>Bug real encontrado de paso: <code>DateFormat</code> con locale sin inicializar</h3>
+        <p>Al construir la pantalla de consulta por fecha con un <code>DateFormat('...', 'es_CO')</code> (igual al que ya usaba el detalle de actividad, §14), se confirmó con un script Dart aislado que <b><code>activity_detail_screen.dart</code> ya estaba roto</b>: sin <code>initializeDateFormatting()</code>, cualquier <code>DateFormat</code> con locale explícito lanza <code>LocaleDataException</code> — el detalle de cualquier actividad programada crasheaba al abrirse. Se corrigió agregando <code>await initializeDateFormatting('es_CO');</code> en <code>main()</code> antes de <code>runApp</code>, cubriendo tanto el detalle de actividad como la pantalla nueva.</p>
+
+        <h3>Regla de autorización permanente (<code>CLAUDE.md</code>)</h3>
+        <p>A partir de esta conversación, y confirmado explícitamente por el usuario, ya no se pide confirmación antes de escribir código, actualizar la documentación, o hacer <code>commit</code>/<code>push</code> a <code>main</code> en este repositorio — reemplaza el patrón de "¿confirmas commit y push?" usado en el resto de esta conversación. Sigue pidiéndose confirmación para lo genuinamente difícil de revertir: force-push, <code>reset --hard</code>, borrar ramas/tags, o tocar secretos/infraestructura fuera de este repo. La regla completa vive en <a href="../CLAUDE.md"><code>CLAUDE.md</code></a> en la raíz del proyecto.</p>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §26 ampliada: keystore respaldado como GitHub Actions secrets y workflow android-release.yml que firma y publica automáticamente en cada tag app-v*.*.* · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §27/§28 agregadas: vistas de calendario Día/Semana/Mes/Agenda, menú lateral, y regla de autorización permanente en CLAUDE.md · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>

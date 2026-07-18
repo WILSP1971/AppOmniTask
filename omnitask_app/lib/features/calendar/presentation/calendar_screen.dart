@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_calendar/calendar.dart';
 
+import '../../../core/navigation/app_drawer.dart';
 import '../../../models/activity.dart';
 import '../../notifications/application/notifications_providers.dart';
 import '../application/activities_for_range_provider.dart';
@@ -60,6 +61,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final unreadCount = ref.watch(unreadNotificationsCountProvider).valueOrNull ?? 0;
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         title: const Text('Agenda'),
         actions: [

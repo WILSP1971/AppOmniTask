@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/auth/logout_action.dart';
 import '../../../models/auth_state.dart';
 import '../../auth/application/auth_notifier.dart';
 
@@ -47,25 +48,10 @@ class SettingsScreen extends ConsumerWidget {
               'Cerrar sesión',
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
-            onTap: () => _confirmLogout(context, ref),
+            onTap: () => confirmAndLogout(context, ref),
           ),
         ],
       ),
     );
-  }
-
-  Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('¿Cerrar sesión?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Cerrar sesión')),
-        ],
-      ),
-    );
-    // Sin navegación manual: el redirect del router reacciona a authNotifierProvider (§15, §16).
-    if (confirmed == true) await ref.read(authNotifierProvider.notifier).logout();
   }
 }

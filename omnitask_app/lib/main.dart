@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'core/router/app_router.dart';
 import 'features/notifications/application/local_notifications_service.dart';
@@ -9,6 +10,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // await Firebase.initializeApp(); — requiere firebase_options.dart generado
   // con `flutterfire configure` (§20), específico de cada proyecto Firebase.
+
+  // Sin esto, cualquier DateFormat con locale explícito (p.ej. 'es_CO' en el
+  // detalle de actividad) lanza LocaleDataException al primer uso.
+  await initializeDateFormatting('es_CO');
 
   final container = ProviderContainer();
   await container.read(localNotificationsServiceProvider).initialize();

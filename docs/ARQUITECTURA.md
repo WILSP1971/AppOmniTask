@@ -3641,6 +3641,41 @@ jobs:
 
 No se pudo disparar este workflow de verdad en este entorno (crear un tag y esperar a que GitHub Actions lo corra excede lo que se puede verificar aquí) — quedó revisado línea por línea contra lo que ya se hizo a mano en esta misma sección, pero su primera ejecución real será el próximo tag `app-v*.*.*` que se empuje.
 
+## §27 — Calendario: vistas Día/Semana/Mes/Agenda, scroll a la hora actual
+
+Motivado por fallas reales reportadas ya en producción (v1.0.4): solo existía la vista de semana, una cita de la tarde/noche quedaba enterrada al fondo de la rejilla porque la vista siempre abría arriba, y la caja de la cita en la última columna se veía recortada/poco legible.
+
+- **Selector de vistas**: `allowedViews: [day, week, month, schedule]` en `SfCalendar` — el propio header de Syncfusion ofrece el switcher, no hizo falta un control propio.
+- **Agenda** (`CalendarView.schedule`) como forma principal de ver "qué tengo hoy/próximo": lista agrupada por día.
+- **Apertura centrada en la hora actual**: `initialDisplayDate: DateTime.now()` en vez de dejar que la vista abra en la parte de arriba de la rejilla.
+- **Caja de la cita rehecha** vía `appointmentBuilder` propio (color por tipo de actividad, texto con elipsis, límites explícitos) en vez del render por defecto de Syncfusion, que es lo que se veía recortado.
+
+Dos cuidados explícitos para no reintroducir el bucle de recarga que ya se había corregido antes (v1.0.4, `skipLoadingOnReload: true` + `if (range != actual) setRange(...)`):
+- Agenda no reporta un rango visible en `onViewChanged` como las demás vistas — reporta un solo `visibleDates` (el día ancla). Pedir `from == to` habría dejado la lista vacía, así que en su lugar se pide una ventana de 3 meses hacia adelante, redondeada a inicio de mes — la misma guarda "solo actualizar si el rango cambió" sigue funcionando porque la ventana no cambia con cada micro-scroll dentro del mismo mes.
+- `ActivityRepository.fetchActivities` ahora pagina de verdad (100 por página) hasta juntar el `total` que reporta el backend, en vez de quedarse con los 50 del límite por defecto del endpoint — necesario porque Mes/Agenda cubren rangos donde fácilmente hay más de 50 actividades.
+
+Verificado con `flutter analyze` (limpio) y 26/26 pruebas (2 nuevas de paginación). El release `app-v1.0.5` se compiló y firmó con el mismo keystore — no se pudo instalar en un dispositivo real dentro de este entorno para confirmar visualmente el resultado.
+
+## §28 — Menú lateral, regla de autorización permanente, y un bug de locale encontrado de paso
+
+### Menú lateral (Calendario / Consultas / Cerrar sesión)
+
+`AppDrawer` (`lib/core/navigation/app_drawer.dart`) se agregó a las tres pantallas que el propio menú enlaza — Calendario, Backlog y la nueva pantalla de consulta — para que moverse entre ellas sea consistente, sin duplicar el menú en pantallas más profundas (detalle, edición, ajustes) que ya tienen su propia navegación:
+
+- **Calendario** → `/` (donde la app ya iniciaba).
+- **Consultas** (submenú):
+  - **Actividades calendario según fecha** → pantalla nueva, `/consultas/por-fecha` (`activities_by_date_screen.dart` + `activitiesByDateProvider`, family por día): elegir un día puntual y ver esa lista, en vez de navegar la rejilla del calendario.
+  - **Actividades sin programar** → `/backlog`, ya existente.
+- **Cerrar sesión** → mismo diálogo de confirmación que ya tenía Ajustes (§16), factorizado a `core/auth/logout_action.dart` para no duplicarlo entre el menú y Ajustes.
+
+### Bug real encontrado de paso: `DateFormat` con locale sin inicializar
+
+Al construir la pantalla de consulta por fecha con un `DateFormat('...', 'es_CO')` (igual al que ya usaba el detalle de actividad, §14), se confirmó con un script Dart aislado que **`activity_detail_screen.dart` ya estaba roto**: sin `initializeDateFormatting()`, cualquier `DateFormat` con locale explícito lanza `LocaleDataException` — el detalle de cualquier actividad programada crasheaba al abrirse. Se corrigió agregando `await initializeDateFormatting('es_CO');` en `main()` antes de `runApp`, cubriendo tanto el detalle de actividad como la pantalla nueva.
+
+### Regla de autorización permanente (`CLAUDE.md`)
+
+A partir de esta conversación, y confirmado explícitamente por el usuario, ya no se pide confirmación antes de escribir código, actualizar la documentación, o hacer `commit`/`push` a `main` en este repositorio — reemplaza el patrón de "¿confirmas commit y push?" usado en el resto de esta conversación. Sigue pidiéndose confirmación para lo genuinamente difícil de revertir: force-push, `reset --hard`, borrar ramas/tags, o tocar secretos/infraestructura fuera de este repo. La regla completa vive en [`CLAUDE.md`](../CLAUDE.md) en la raíz del proyecto.
+
 ---
 
 *Documento de arquitectura v1 · 11 de julio de 2026 · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.*

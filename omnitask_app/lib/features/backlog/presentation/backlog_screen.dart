@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/navigation/app_drawer.dart';
 import '../application/unscheduled_activities_provider.dart';
 
 /// Bandeja de "pendientes por programar" (§4, §12) — distinta de la bandeja
@@ -15,6 +16,7 @@ class BacklogScreen extends ConsumerWidget {
     final backlogAsync = ref.watch(unscheduledActivitiesProvider);
 
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(title: const Text('Pendientes por programar')),
       body: backlogAsync.when(
         data: (items) => items.isEmpty
