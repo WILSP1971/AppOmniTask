@@ -59,6 +59,12 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        // Preserva los nombres originales de los claims (p.ej. "sub"). Sin esto
+        // el handler remapea "sub" a ClaimTypes.NameIdentifier y GetUserId()
+        // —que busca JwtRegisteredClaimNames.Sub— recibe null y lanza 500 en
+        // todos los endpoints autenticados (p.ej. GET /auth/me).
+        options.MapInboundClaims = false;
+
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = false,
