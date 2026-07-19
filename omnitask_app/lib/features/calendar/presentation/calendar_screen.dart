@@ -65,6 +65,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         ref.watch(unreadNotificationsCountProvider).valueOrNull ?? 0;
     final unscheduledCount =
         ref.watch(unscheduledActivitiesProvider).valueOrNull?.length ?? 0;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
       drawer: const AppDrawer(),
@@ -122,6 +123,70 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             final activity = details.appointments?.first as Activity?;
             if (activity != null) context.push('/activities/${activity.id}');
           },
+          backgroundColor: colorScheme.surface,
+          todayHighlightColor: colorScheme.primary,
+          cellBorderColor: colorScheme.outlineVariant.withValues(alpha: 0.3),
+          headerStyle: CalendarHeaderStyle(
+            backgroundColor: colorScheme.surface,
+            textStyle: TextStyle(
+              color: colorScheme.primary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          viewHeaderStyle: ViewHeaderStyle(
+            backgroundColor: colorScheme.surface,
+            dayTextStyle: TextStyle(
+              color: colorScheme.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+            dateTextStyle: TextStyle(color: colorScheme.onSurface),
+          ),
+          monthViewSettings: MonthViewSettings(
+            appointmentDisplayMode: MonthAppointmentDisplayMode.indicator,
+            monthCellStyle: MonthCellStyle(
+              backgroundColor: colorScheme.surface,
+              trailingDatesBackgroundColor: colorScheme.surface,
+              leadingDatesBackgroundColor: colorScheme.surface,
+              textStyle: TextStyle(color: colorScheme.onSurface),
+              trailingDatesTextStyle:
+                  TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+              leadingDatesTextStyle:
+                  TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5)),
+            ),
+          ),
+          timeSlotViewSettings: TimeSlotViewSettings(
+            timeTextStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+          ),
+          scheduleViewSettings: ScheduleViewSettings(
+            appointmentItemHeight: 72,
+            monthHeaderSettings: MonthHeaderSettings(
+              backgroundColor: colorScheme.surface,
+              monthTextStyle: TextStyle(
+                color: colorScheme.primary,
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            weekHeaderSettings: WeekHeaderSettings(
+              backgroundColor: colorScheme.surfaceContainerHigh,
+              weekTextStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+            ),
+            dayHeaderSettings: DayHeaderSettings(
+              dayTextStyle: TextStyle(
+                  color: colorScheme.onSurfaceVariant, fontSize: 11),
+              dateTextStyle: TextStyle(
+                color: colorScheme.onSurface,
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          selectionDecoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: colorScheme.primary,
+          ),
         ),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
@@ -182,7 +247,7 @@ class _TimeSlotAppointmentBox extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 6, vertical: compact ? 1 : 3),
       decoration: BoxDecoration(
         color: colorForActivityType(activity.type),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       alignment: Alignment.topLeft,
       child: Text(
@@ -199,8 +264,9 @@ class _TimeSlotAppointmentBox extends StatelessWidget {
   }
 }
 
-/// Fila de la vista Agenda — franja de color por tipo + título + rango de
-/// hora en local (los datos siempre llegan en UTC, §9).
+/// Tarjeta de la vista Agenda (estilo agenda2/agenda3 del rediseño visual) —
+/// badge de color por tipo + título + rango de hora en local (los datos
+/// siempre llegan en UTC, §9) + chevron que refuerza el onTap ya existente.
 class _ScheduleAppointmentTile extends StatelessWidget {
   const _ScheduleAppointmentTile({required this.activity});
 
@@ -208,6 +274,7 @@ class _ScheduleAppointmentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final timeFormat = DateFormat.Hm();
     final start = activity.startsAt?.toLocal();
     final end = activity.endsAt?.toLocal();
@@ -216,18 +283,27 @@ class _ScheduleAppointmentTile extends StatelessWidget {
         : end == null
             ? timeFormat.format(start)
             : '${timeFormat.format(start)} – ${timeFormat.format(end)}';
+    final typeColor = colorForActivityType(activity.type);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Row(
         children: [
           Container(
-            width: 4,
-            height: 36,
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: colorForActivityType(activity.type),
-              borderRadius: BorderRadius.circular(2),
+              color: typeColor.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(12),
             ),
+            child: Icon(_iconForActivityType(activity.type),
+                color: typeColor, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -237,23 +313,37 @@ class _ScheduleAppointmentTile extends StatelessWidget {
               children: [
                 Text(
                   activity.title,
-                  style: const TextStyle(
-                      fontSize: 15, fontWeight: FontWeight.w600),
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface),
                   overflow: TextOverflow.ellipsis,
                 ),
                 if (timeLabel != null)
                   Text(
                     timeLabel,
                     style: TextStyle(
-                        fontSize: 13,
-                        color: Theme.of(context).colorScheme.outline),
+                        fontSize: 13, color: colorScheme.onSurfaceVariant),
                   ),
               ],
             ),
           ),
+          Icon(Icons.chevron_right, color: colorScheme.onSurfaceVariant),
         ],
       ),
     );
+  }
+}
+
+IconData _iconForActivityType(String type) {
+  switch (type) {
+    case 'meeting':
+      return Icons.groups_outlined;
+    case 'task':
+      return Icons.task_alt_outlined;
+    case 'appointment':
+    default:
+      return Icons.event_outlined;
   }
 }
 

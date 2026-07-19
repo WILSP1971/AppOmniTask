@@ -7,12 +7,51 @@ import 'package:flutter/material.dart';
 abstract final class AppTheme {
   static const _seed = Color(0xFF0E7C72);
 
+  // Paleta oscura (§rediseño visual, referencias agenda2/agenda3): fondo
+  // azul-carbón profundo con paneles/tarjetas un tono más claro y acento
+  // periwinkle — reemplaza el seed teal solo en brightness.dark para no
+  // afectar el ColorScheme.fromSeed que ya usan otras partes del código.
+  static const _darkBackground = Color(0xFF1C2733);
+  static const _darkSurface = Color(0xFF26313F);
+  static const _darkSurfaceHigh = Color(0xFF2A3646);
+  static const _darkPrimary = Color(0xFF4A6CF7);
+  static const _darkTextPrimary = Color(0xFFF5F7FA);
+  static const _darkTextSecondary = Color(0xFF8A97A8);
+
   static ThemeData get light {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: _seed,
       brightness: Brightness.light,
     );
+    return _themeFor(colorScheme);
+  }
 
+  static ThemeData get dark {
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: _darkPrimary,
+      brightness: Brightness.dark,
+    ).copyWith(
+      primary: _darkPrimary,
+      onPrimary: Colors.white,
+      primaryContainer: _darkPrimary,
+      onPrimaryContainer: Colors.white,
+      secondary: const Color(0xFF26C6A6),
+      tertiary: const Color(0xFFF5A623),
+      surface: _darkBackground,
+      onSurface: _darkTextPrimary,
+      surfaceContainerLow: _darkSurface,
+      surfaceContainer: _darkSurface,
+      surfaceContainerHigh: _darkSurfaceHigh,
+      surfaceContainerHighest: _darkSurfaceHigh,
+      onSurfaceVariant: _darkTextSecondary,
+      outline: _darkTextSecondary.withValues(alpha: 0.6),
+      outlineVariant: _darkTextSecondary.withValues(alpha: 0.24),
+      error: const Color(0xFFEF6C6C),
+    );
+    return _themeFor(colorScheme);
+  }
+
+  static ThemeData _themeFor(ColorScheme colorScheme) {
     final base = ThemeData(colorScheme: colorScheme, useMaterial3: true);
     final textTheme = _textTheme(base.textTheme, colorScheme);
 

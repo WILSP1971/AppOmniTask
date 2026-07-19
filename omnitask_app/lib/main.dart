@@ -38,6 +38,8 @@ class OmniTaskApp extends ConsumerWidget {
       title: 'OmniTask',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      themeMode: ThemeMode.dark,
       localizationsDelegates: const [
         SfGlobalLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
