@@ -42,7 +42,11 @@ public record ActivityCreateRequest(
     Guid? ContactId,
     DateTimeOffset? StartsAt,
     DateTimeOffset? EndsAt,
-    string? Location);
+    string? Location,
+    // SPEC-003 (§6, §3 RF1): link de reunión pegado manualmente; ambos nulos
+    // si la actividad no tiene reunión.
+    string? MeetingUrl = null,
+    string? MeetingProvider = null);
 
 // ClearStartsAt/ClearEndsAt existen porque un valor null en StartsAt/EndsAt es
 // ambiguo por sí solo ("no lo toques" vs. "bórralo") — con el flag explícito,
@@ -56,7 +60,12 @@ public record ActivityUpdateRequest(
     DateTimeOffset? EndsAt = null,
     bool ClearEndsAt = false,
     string? Status = null,
-    string? Location = null);
+    string? Location = null,
+    // SPEC-003 (§6, §3 RF2): mismo criterio "NULL = no lo toques" que
+    // Title/Description/Location — no hay flag de "limpiar" porque no fue
+    // pedido por la SPEC.
+    string? MeetingUrl = null,
+    string? MeetingProvider = null);
 
 public record ReminderSummaryResponse(Guid Id, DateTimeOffset RemindAt, string Channel, string Status);
 
@@ -74,7 +83,19 @@ public record ActivityResponse(
     string? Location,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
+    string? MeetingUrl = null,
+    string? MeetingProvider = null,
     List<ReminderSummaryResponse>? Reminders = null);
+
+// ---- Activity attachments (SPEC-002, §6) ----
+
+public record AttachmentResponse(
+    Guid Id,
+    Guid ActivityId,
+    string FileName,
+    string ContentType,
+    long SizeBytes,
+    DateTimeOffset UploadedAt);
 
 // ---- Contacts (§6) ----
 

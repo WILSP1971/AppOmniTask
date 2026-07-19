@@ -14,8 +14,10 @@ public class ActivityService : SqlServiceBase, IActivityService
 
     public Task<ActivityResponse> CreateAsync(Guid userId, ActivityCreateRequest request) => RunAsync(async conn =>
     {
+        ValidateMeeting(request.MeetingUrl, request.MeetingProvider);
+
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT * FROM fn_create_activity(@user_id, @contact_id, @type, @title, @description, @starts_at, @ends_at, @location)";
+        cmd.CommandText = "SELECT * FROM fn_create_activity(@user_id, @contact_id, @type, @title, @description, @starts_at, @ends_at, @location, @meeting_url, @meeting_provider)";
         cmd.Parameters.AddWithValue("user_id", userId);
         cmd.Parameters.AddWithValue("contact_id", (object?)request.ContactId ?? DBNull.Value);
         cmd.Parameters.Add(EnumParam("type", "activity_type", EnumParsing.Parse<ActivityType>(request.Type, "type")));
@@ -24,6 +26,8 @@ public class ActivityService : SqlServiceBase, IActivityService
         cmd.Parameters.AddWithValue("starts_at", (object?)request.StartsAt ?? DBNull.Value);
         cmd.Parameters.AddWithValue("ends_at", (object?)request.EndsAt ?? DBNull.Value);
         cmd.Parameters.AddWithValue("location", (object?)request.Location ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("meeting_url", (object?)request.MeetingUrl ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("meeting_provider", (object?)request.MeetingProvider ?? DBNull.Value);
 
         await using var reader = await cmd.ExecuteReaderAsync();
         await reader.ReadAsync();
@@ -105,12 +109,14 @@ public class ActivityService : SqlServiceBase, IActivityService
     public Task<ActivityResponse> UpdateAsync(Guid userId, Guid activityId, ActivityUpdateRequest request) =>
         RunAsync(async conn =>
         {
+            ValidateMeeting(request.MeetingUrl, request.MeetingProvider);
+
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT * FROM fn_update_activity(
                     @user_id, @id, @title, @description,
                     @starts_at, @clear_starts_at, @ends_at, @clear_ends_at,
-                    @status, @location)";
+                    @status, @location, @meeting_url, @meeting_provider)";
             cmd.Parameters.AddWithValue("user_id", userId);
             cmd.Parameters.AddWithValue("id", activityId);
             cmd.Parameters.AddWithValue("title", (object?)request.Title ?? DBNull.Value);
@@ -121,6 +127,8 @@ public class ActivityService : SqlServiceBase, IActivityService
             cmd.Parameters.AddWithValue("clear_ends_at", request.ClearEndsAt);
             cmd.Parameters.Add(EnumParam("status", "activity_status", request.Status is null ? null : EnumParsing.Parse<ActivityStatus>(request.Status, "status")));
             cmd.Parameters.AddWithValue("location", (object?)request.Location ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("meeting_url", (object?)request.MeetingUrl ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("meeting_provider", (object?)request.MeetingProvider ?? DBNull.Value);
 
             await using var reader = await cmd.ExecuteReaderAsync();
             await reader.ReadAsync();
@@ -131,6 +139,18 @@ public class ActivityService : SqlServiceBase, IActivityService
         // Soft delete: mismo contrato que DELETE /activities/{id} en la §6.
         UpdateAsync(userId, activityId, new ActivityUpdateRequest(
             null, null, null, false, null, false, "cancelled", null));
+
+    // SPEC-003 (§5): defensa en profundidad — el cliente ya valida, pero el
+    // servidor nunca confía solo en él. Solo valida cuando el campo viene con
+    // contenido (NULL = "no lo toques"/"sin reunión", permitido por RF1).
+    private static void ValidateMeeting(string? meetingUrl, string? meetingProvider)
+    {
+        if (meetingUrl is not null && !MeetingValidation.IsValidMeetingUrl(meetingUrl))
+            throw new ApiException(400, "invalid_meeting_url", "meeting_url debe ser una URL http/https válida");
+
+        if (meetingProvider is not null && !MeetingValidation.IsValidProvider(meetingProvider))
+            throw new ApiException(400, "invalid_meeting_provider", "meeting_provider debe ser 'meet', 'teams' u 'other'");
+    }
 
     private static ActivityResponse MapActivity(NpgsqlDataReader reader)
     {
@@ -148,7 +168,15 @@ public class ActivityService : SqlServiceBase, IActivityService
             reader.GetString(reader.GetOrdinal("timezone")),
             reader.IsDBNull(reader.GetOrdinal("location")) ? null : reader.GetString(reader.GetOrdinal("location")),
             reader.GetFieldValue<DateTimeOffset>(reader.GetOrdinal("created_at")),
-            reader.GetFieldValue<DateTimeOffset>(reader.GetOrdinal("updated_at")));
+            reader.GetFieldValue<DateTimeOffset>(reader.GetOrdinal("updated_at")),
+            GetNullableString(reader, "meeting_url"),
+            GetNullableString(reader, "meeting_provider"));
+    }
+
+    private static string? GetNullableString(NpgsqlDataReader reader, string column)
+    {
+        var ordinal = reader.GetOrdinal(column);
+        return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
     }
 
     private static DateTimeOffset? GetNullableDateTimeOffset(NpgsqlDataReader reader, string column)

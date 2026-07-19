@@ -48,6 +48,10 @@ builder.Services.AddScoped<IActivityService, ActivityService>();
 builder.Services.AddScoped<IContactService, ContactService>();
 builder.Services.AddScoped<IDeviceService, DeviceService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+// SPEC-002 (§4 RNF6): almacenamiento de adjuntos en filesystem, ruta
+// configurable vía Attachments:RootPath (fuera del árbol servido por IIS).
+builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
+builder.Services.AddScoped<IAttachmentService, AttachmentService>();
 builder.Services.AddSingleton<IPasswordHasher, Argon2PasswordHasher>();
 builder.Services.AddSingleton<ITokenFactory, JwtTokenFactory>();
 builder.Services.AddSingleton<IPushSender, FirebasePushSender>();

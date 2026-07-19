@@ -25,6 +25,23 @@ public interface IActivityService
     Task CancelAsync(Guid userId, Guid activityId);
 }
 
+// Implementada en Infrastructure (AttachmentService) — SPEC-002 (§6):
+// adjuntos de actividad, metadatos en Postgres + binario en filesystem
+// (IFileStorage). Recibe los bytes ya leídos por la capa Api (controlador
+// delgado) para no acoplar Application a IFormFile/ASP.NET.
+public interface IAttachmentService
+{
+    Task<AttachmentResponse> UploadAsync(
+        Guid userId, Guid activityId, string fileName, string contentType, Stream content);
+
+    Task<List<AttachmentResponse>> ListAsync(Guid userId, Guid activityId);
+
+    Task<(AttachmentResponse Metadata, Stream Content)> DownloadAsync(
+        Guid userId, Guid activityId, Guid attachmentId);
+
+    Task DeleteAsync(Guid userId, Guid activityId, Guid attachmentId);
+}
+
 public interface IContactService
 {
     Task<ContactResponse> CreateAsync(Guid userId, ContactRequest request);
