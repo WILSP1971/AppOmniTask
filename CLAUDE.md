@@ -19,3 +19,11 @@ Esto reemplaza el patrón de "¿confirmas commit y push?" que se usó en el rest
 Cortar un release nuevo es: `git tag app-vX.Y.Z && git push origin app-vX.Y.Z` — dispara
 `.github/workflows/android-release.yml`, que compila, firma y publica el APK. No hace falta
 pedir permiso para crear el tag si el cambio ya se subió a `main` y pasó CI.
+
+## Mostrar el agente/rol activo (siempre)
+
+En CADA paso del trabajo, ANUNCIA en una línea quién lo ejecuta, con el formato
+`🦸 [AGENTE/ROL] — <qué está haciendo>` (p.ej. `🦸 CAPTAIN AMERICA — implementando la
+pantalla de agenda`, o `🦸 DAREDEVIL — revisando el frontend`). Cuando delegues en un
+sub-agente, hazlo con la herramienta de agentes (para que la terminal muestre su nombre)
+y además anúncialo en texto. Así el Lead siempre ve qué agente está trabajando en el flujo.
