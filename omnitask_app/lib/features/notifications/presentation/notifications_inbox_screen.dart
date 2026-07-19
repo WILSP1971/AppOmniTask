@@ -109,12 +109,13 @@ class _StatusDot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final color = switch (status) {
-      'read' => Colors.green,
-      'delivered' => Colors.blue,
-      'sent' => Colors.grey,
-      'failed' => Colors.red,
-      _ => Colors.grey,
+      'read' => colorScheme.secondary,
+      'delivered' => colorScheme.primary,
+      'sent' => colorScheme.onSurfaceVariant,
+      'failed' => colorScheme.error,
+      _ => colorScheme.onSurfaceVariant,
     };
     return Container(
       width: 10,

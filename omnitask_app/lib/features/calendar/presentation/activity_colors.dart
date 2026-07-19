@@ -14,3 +14,10 @@ Color colorForActivityType(String type) {
       return const Color(0xFF26C6A6);
   }
 }
+
+/// Acentos de UI del rediseño visual (SPEC-001 §3) — NO son tipos de
+/// actividad nuevos, solo color de detalles de interfaz: el punto de
+/// notificación no leída (kAccentPink) y el FAB central del bottom nav
+/// (kAccentPurpleFab).
+const kAccentPink = Color(0xFFEC4899);
+const kAccentPurpleFab = Color(0xFF5B6EF5);

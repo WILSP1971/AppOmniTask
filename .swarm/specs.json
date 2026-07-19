@@ -1,0 +1,21 @@
+{
+  "next_id": 2,
+  "counters": {
+    "PROPUESTA": 0,
+    "APROBADA": 1,
+    "RECHAZADA": 0,
+    "IMPLEMENTADA": 0
+  },
+  "specs": [
+    {
+      "id": "SPEC-001",
+      "titulo": "Rediseno visual real de Home (Agenda/Calendario) v1.0.9",
+      "estado": "APROBADA",
+      "archivo": ".swarm/specs/SPEC-001.md",
+      "creada": "2026-07-19",
+      "aprobada": "2026-07-19",
+      "autor": "DOCTOR STRANGE",
+      "aprobador": "Lead humano"
+    }
+  ]
+}

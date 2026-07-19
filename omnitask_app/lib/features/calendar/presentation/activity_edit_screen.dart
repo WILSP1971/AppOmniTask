@@ -68,52 +68,62 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            DropdownButtonFormField<String>(
-              initialValue: _type,
-              items: const [
-                DropdownMenuItem(value: 'meeting', child: Text('Reunión')),
-                DropdownMenuItem(value: 'appointment', child: Text('Cita')),
-                DropdownMenuItem(value: 'task', child: Text('Tarea')),
-                DropdownMenuItem(value: 'activity', child: Text('Actividad')),
-              ],
-              onChanged: (value) => setState(() => _type = value!),
-              decoration: const InputDecoration(labelText: 'Tipo'),
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _titleController,
-              decoration: const InputDecoration(labelText: 'Título'),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'El título es obligatorio' : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(labelText: 'Descripción'),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 12),
-            ContactPickerField(
-              selectedContact: _contact,
-              onChanged: (contact) => setState(() => _contact = contact),
-            ),
-            SwitchListTile(
-              title: const Text('Sin fecha por ahora'),
-              subtitle: const Text('Se guarda como pendiente por programar'),
-              value: !_hasDate,
-              onChanged: (noDate) => setState(() => _hasDate = !noDate),
-            ),
-            if (_hasDate) ...[
-              DateTimeField(
-                label: 'Inicio',
-                value: _startsAt,
-                onChanged: (value) => setState(() => _startsAt = value),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: _type,
+                      items: const [
+                        DropdownMenuItem(value: 'meeting', child: Text('Reunión')),
+                        DropdownMenuItem(value: 'appointment', child: Text('Cita')),
+                        DropdownMenuItem(value: 'task', child: Text('Tarea')),
+                        DropdownMenuItem(value: 'activity', child: Text('Actividad')),
+                      ],
+                      onChanged: (value) => setState(() => _type = value!),
+                      decoration: const InputDecoration(labelText: 'Tipo'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _titleController,
+                      decoration: const InputDecoration(labelText: 'Título'),
+                      validator: (v) => (v == null || v.trim().isEmpty) ? 'El título es obligatorio' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _descriptionController,
+                      decoration: const InputDecoration(labelText: 'Descripción'),
+                      maxLines: 3,
+                    ),
+                    const SizedBox(height: 12),
+                    ContactPickerField(
+                      selectedContact: _contact,
+                      onChanged: (contact) => setState(() => _contact = contact),
+                    ),
+                    SwitchListTile(
+                      title: const Text('Sin fecha por ahora'),
+                      subtitle: const Text('Se guarda como pendiente por programar'),
+                      value: !_hasDate,
+                      onChanged: (noDate) => setState(() => _hasDate = !noDate),
+                    ),
+                    if (_hasDate) ...[
+                      DateTimeField(
+                        label: 'Inicio',
+                        value: _startsAt,
+                        onChanged: (value) => setState(() => _startsAt = value),
+                      ),
+                      DateTimeField(
+                        label: 'Fin',
+                        value: _endsAt,
+                        onChanged: (value) => setState(() => _endsAt = value),
+                      ),
+                    ],
+                  ],
+                ),
               ),
-              DateTimeField(
-                label: 'Fin',
-                value: _endsAt,
-                onChanged: (value) => setState(() => _endsAt = value),
-              ),
-            ],
+            ),
           ],
         ),
       ),

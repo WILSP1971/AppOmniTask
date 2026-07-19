@@ -126,14 +126,17 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final (label, color) = switch (status) {
-      'scheduled' => ('Programada', Colors.blue),
-      'completed' => ('Completada', Colors.green),
-      'cancelled' => ('Cancelada', Colors.red),
-      _ => ('Pendiente por programar', Colors.orange),
+      'scheduled' => ('Programada', colorScheme.primary),
+      'completed' => ('Completada', colorScheme.secondary),
+      'cancelled' => ('Cancelada', colorScheme.error),
+      _ => ('Pendiente por programar', colorScheme.tertiary),
     };
     return Chip(
-        label: Text(label), backgroundColor: color.withValues(alpha: 0.15));
+      label: Text(label, style: TextStyle(color: color)),
+      backgroundColor: color.withValues(alpha: 0.15),
+    );
   }
 }
 
@@ -160,17 +163,18 @@ class _UnscheduledBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
+        color: colorScheme.tertiary.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.event_busy_outlined, color: Colors.orange),
-          SizedBox(width: 8),
-          Expanded(child: Text('Sin fecha asignada todavía')),
+          Icon(Icons.event_busy_outlined, color: colorScheme.tertiary),
+          const SizedBox(width: 8),
+          const Expanded(child: Text('Sin fecha asignada todavía')),
         ],
       ),
     );

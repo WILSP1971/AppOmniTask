@@ -20,35 +20,49 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Ajustes')),
       body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          if (user != null)
-            ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-              title: Text(user.fullName),
-              subtitle: Text(user.email),
-              onTap: () => context.push('/settings/profile'),
+          if (user != null) ...[
+            Card(
+              child: ListTile(
+                leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+                title: Text(user.fullName),
+                subtitle: Text(user.email),
+                onTap: () => context.push('/settings/profile'),
+              ),
             ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.notifications_outlined),
-            title: const Text('Notificaciones'),
-            subtitle: const Text('Canal y anticipación de los recordatorios'),
-            onTap: () => context.push('/settings/notifications'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.devices_outlined),
-            title: const Text('Dispositivos'),
-            subtitle: const Text('Sesiones activas de push'),
-            onTap: () => context.push('/settings/devices'),
-          ),
-          const Divider(),
-          ListTile(
-            leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
-            title: Text(
-              'Cerrar sesión',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            const SizedBox(height: 16),
+          ],
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.notifications_outlined),
+                  title: const Text('Notificaciones'),
+                  subtitle:
+                      const Text('Canal y anticipación de los recordatorios'),
+                  onTap: () => context.push('/settings/notifications'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.devices_outlined),
+                  title: const Text('Dispositivos'),
+                  subtitle: const Text('Sesiones activas de push'),
+                  onTap: () => context.push('/settings/devices'),
+                ),
+              ],
             ),
-            onTap: () => confirmAndLogout(context, ref),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: ListTile(
+              leading: Icon(Icons.logout, color: Theme.of(context).colorScheme.error),
+              title: Text(
+                'Cerrar sesión',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              onTap: () => confirmAndLogout(context, ref),
+            ),
           ),
         ],
       ),
