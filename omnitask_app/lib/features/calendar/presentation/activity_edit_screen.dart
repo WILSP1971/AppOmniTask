@@ -176,6 +176,9 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
         _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim();
     final meetingUrl =
         _meetingUrlController.text.trim().isEmpty ? null : _meetingUrlController.text.trim();
+    // Si no hay URL, el provider queda huérfano y no se envía: evita guardar
+    // un meetingProvider sin meetingUrl (dato inconsistente).
+    final meetingProvider = meetingUrl == null ? null : _meetingProvider;
     final controller = ref.read(activityFormControllerProvider.notifier);
 
     final saved = _isEditing
@@ -188,7 +191,7 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
             endsAt: _hasDate ? _endsAt : null,
             clearEndsAt: !_hasDate,
             meetingUrl: meetingUrl,
-            meetingProvider: _meetingProvider,
+            meetingProvider: meetingProvider,
           )
         : await controller.create(ActivityDraft(
             type: _type,
@@ -198,7 +201,7 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
             startsAt: _hasDate ? _startsAt : null,
             endsAt: _hasDate ? _endsAt : null,
             meetingUrl: meetingUrl,
-            meetingProvider: _meetingProvider,
+            meetingProvider: meetingProvider,
           ));
 
     if (saved != null && mounted) context.pop();

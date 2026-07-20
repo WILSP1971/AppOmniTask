@@ -6,10 +6,14 @@ namespace OmniTask.Infrastructure.Services;
 // el filesystem del servidor con ruta configurable (Attachments:RootPath).
 // El nombre físico es SIEMPRE un GUID generado aquí — nunca el nombre
 // original del cliente (defensa contra path traversal / colisiones, RNF1).
+// La extensión sí se preserva (derivada del content_type ya validado por
+// AttachmentValidation), solo para que el archivo sea identificable en el
+// filesystem — no reintroduce el nombre del cliente ni afecta la defensa
+// anti path-traversal.
 public interface IFileStorage
 {
     // Devuelve la ruta relativa (dentro de RootPath) donde quedó guardado el archivo.
-    Task<string> SaveAsync(Stream content, CancellationToken cancellationToken = default);
+    Task<string> SaveAsync(Stream content, string extension, CancellationToken cancellationToken = default);
 
     Task<Stream> OpenReadAsync(string relativePath, CancellationToken cancellationToken = default);
 
@@ -27,9 +31,10 @@ public class LocalFileStorage : IFileStorage
         Directory.CreateDirectory(_rootPath);
     }
 
-    public async Task<string> SaveAsync(Stream content, CancellationToken cancellationToken = default)
+    public async Task<string> SaveAsync(Stream content, string extension, CancellationToken cancellationToken = default)
     {
-        var relativePath = $"{Guid.NewGuid():N}.bin";
+        var safeExtension = extension.StartsWith('.') ? extension : $".{extension}";
+        var relativePath = $"{Guid.NewGuid():N}{safeExtension}";
         var fullPath = ResolveFullPath(relativePath);
 
         await using var fileStream = new FileStream(fullPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);

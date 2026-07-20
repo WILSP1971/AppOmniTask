@@ -37,7 +37,10 @@ public class AttachmentService : SqlServiceBase, IAttachmentService
             throw new ApiException(413, "payload_too_large", "El archivo supera el tamaño máximo permitido (10 MB)");
 
         buffer.Position = 0;
-        var storagePath = await _fileStorage.SaveAsync(buffer);
+        // Extensión canónica del content_type ya validado (nunca la del
+        // nombre de archivo del cliente): consistente con RF7/RNF1.
+        var extension = AttachmentValidation.AllowedContentTypesToExtensions[contentType][0];
+        var storagePath = await _fileStorage.SaveAsync(buffer, extension);
 
         return await RunAsync(async conn =>
         {

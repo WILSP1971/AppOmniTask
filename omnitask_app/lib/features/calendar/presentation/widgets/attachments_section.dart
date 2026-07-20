@@ -204,7 +204,7 @@ class _AttachmentTile extends ConsumerWidget {
       return;
     }
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/${attachment.id}_${attachment.fileName}');
+    final file = File('${dir.path}/${attachment.id}_${_sanitizedFileName(attachment.fileName)}');
     await file.writeAsBytes(downloadResult.value!, flush: true);
     final openResult = await OpenFilex.open(file.path);
     if (!context.mounted) return;
@@ -213,6 +213,16 @@ class _AttachmentTile extends ConsumerWidget {
         const SnackBar(content: Text('No se pudo abrir el archivo con una app del dispositivo')),
       );
     }
+  }
+
+  /// Defensa en profundidad del lado cliente (el servidor ya garantiza que el
+  /// nombre físico es un GUID): toma solo el basename de [fileName] y
+  /// descarta separadores de ruta y `..`, para que nunca pueda escribirse un
+  /// archivo temporal fuera del directorio esperado.
+  String _sanitizedFileName(String fileName) {
+    final basename = fileName.split(RegExp(r'[\\/]')).last;
+    final sanitized = basename.replaceAll('..', '').replaceAll(RegExp(r'[\\/]'), '_');
+    return sanitized.isEmpty ? 'archivo' : sanitized;
   }
 
   Future<void> _confirmDelete(BuildContext context, AttachmentActionsController controller) async {
