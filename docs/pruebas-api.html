@@ -1,0 +1,655 @@
+<title>OmniTask API — Guía de pruebas</title>
+<style>
+  :root {
+    --bg: #1c2733;
+    --surface: #26313f;
+    --surface-high: #2a3646;
+    --line: #34435a;
+    --ink: #f5f7fa;
+    --ink-soft: #8a97a8;
+    --accent: #4a6cf7;
+    --accent-soft: #26314f;
+    --get: #26c6a6;
+    --post: #4a6cf7;
+    --patch: #f5a623;
+    --delete: #ef6c6c;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  .page { max-width: 780px; margin: 0 auto; padding: 48px 20px 80px; }
+
+  .eyebrow {
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+
+  h1 {
+    font-size: clamp(1.8rem, 4.5vw, 2.3rem);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 12px;
+  }
+
+  .lede { color: var(--ink-soft); max-width: 62ch; margin: 0 0 32px; font-size: 1.02rem; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+
+  .card h2 { font-size: 1.05rem; font-weight: 650; margin: 0 0 12px; }
+
+  .howto ol { margin: 0; padding-left: 20px; }
+  .howto li { margin-bottom: 10px; }
+  .howto li:last-child { margin-bottom: 0; }
+
+  .kv { display: flex; gap: 10px; padding: 9px 0; border-top: 1px dashed var(--line); font-size: 13.5px; }
+  .kv:first-of-type { border-top: none; }
+  .kv dt { color: var(--ink-soft); flex: none; width: 100px; }
+  .kv dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .kv code { color: var(--ink); }
+
+  .group-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 32px;
+  }
+  .group-nav a {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 14px;
+    text-decoration: none;
+  }
+  .group-nav a:hover { border-color: var(--accent); color: var(--accent); }
+
+  section.group { margin-bottom: 40px; }
+  section.group > h2 {
+    font-size: 1.2rem;
+    font-weight: 650;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 10px;
+    margin: 0 0 16px;
+  }
+
+  details.endpoint {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  details.endpoint[open] { border-color: var(--accent); }
+  details.endpoint summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 13px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+  }
+  details.endpoint summary::-webkit-details-marker { display: none; }
+  details.endpoint summary::after {
+    content: "＋";
+    margin-left: auto;
+    color: var(--ink-soft);
+    font-size: 16px;
+  }
+  details.endpoint[open] summary::after { content: "－"; }
+  details.endpoint summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  .method {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 3px 8px;
+    border-radius: 5px;
+    color: #10151d;
+    flex: none;
+    width: 58px;
+    text-align: center;
+  }
+  .method.get { background: var(--get); }
+  .method.post { background: var(--post); color: #f5f7fa; }
+  .method.patch { background: var(--patch); }
+  .method.delete { background: var(--delete); }
+
+  .path { font-weight: 600; }
+  .auth-badge {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 9px;
+  }
+  details.endpoint summary .auth-badge { margin-left: 0; }
+
+  .endpoint-body { padding: 4px 16px 18px; }
+  .endpoint-body p { margin: 0 0 12px; color: var(--ink-soft); font-size: 13.5px; }
+  .endpoint-body p:last-of-type { margin-bottom: 14px; }
+
+  .snippet-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 14px 0 6px;
+  }
+  .snippet-label:first-child { margin-top: 0; }
+
+  .codewrap { position: relative; overflow-x: auto; border-radius: 8px; }
+  pre {
+    margin: 0;
+    background: #141c26;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    white-space: pre;
+  }
+
+  .callout {
+    background: var(--accent-soft);
+    border: 1px solid #3a4a7a;
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 13.5px;
+    color: var(--ink);
+  }
+  .callout strong { display: block; margin-bottom: 4px; color: var(--accent); }
+
+  footer { color: var(--ink-soft); font-size: 12.5px; text-align: center; margin-top: 8px; }
+  footer a { color: var(--accent); }
+</style>
+
+<div class="page">
+  <p class="eyebrow">OmniTask · Clínica Campbell</p>
+  <h1>Guía de pruebas de la API</h1>
+  <p class="lede">
+    Los 26 endpoints que la app invoca de verdad, contra la API real de producción, con datos
+    de ejemplo listos para pegar en la consola del navegador (F12) y validar por tu cuenta —
+    sin instalar Postman ni nada aparte.
+  </p>
+
+  <div class="card howto">
+    <h2>Cómo usar esta guía</h2>
+    <ol>
+      <li>Abre cualquier página en el navegador y presiona <code>F12</code> (o clic derecho → Inspeccionar) para abrir las herramientas de desarrollo, y ve a la pestaña <b>Console</b>.</li>
+      <li>Pega el bloque de la sección <b>0. Variables</b> primero — define la URL base y, más adelante, tu token.</li>
+      <li>Empieza por <b>Auth → Iniciar sesión</b> (o Registrar, si es tu primera vez). La respuesta trae <code>access_token</code> — cópialo y pégalo en la variable <code>TOKEN</code>.</li>
+      <li>De ahí en adelante, cualquier bloque que diga "Requiere sesión" ya manda ese token en el header <code>Authorization</code> automáticamente si seguiste el paso anterior.</li>
+      <li>Cada bloque imprime la respuesta completa en la consola — revisa el código HTTP y el cuerpo JSON para confirmar que la API responde lo esperado.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-bottom: 8px;">0. Variables (pegar primero)</h2>
+    <p style="color: var(--ink-soft); font-size: 13.5px; margin: 0 0 10px;">Define esto una vez por sesión de consola — se pierde si recargas la página.</p>
+    <div class="codewrap"><pre>const API = "https://appsintranet.esculapiosis.com/APIOmniTask/api/v1";
+let TOKEN = ""; // lo llenas después de login/registro
+let REFRESH = ""; // idem, con el refresh_token
+
+const authHeaders = () => ({
+  "Content-Type": "application/json",
+  ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
+});</pre></div>
+  </div>
+
+  <nav class="group-nav">
+    <a href="#auth">Auth</a>
+    <a href="#activities">Actividades</a>
+    <a href="#attachments">Adjuntos</a>
+    <a href="#contacts">Contactos</a>
+    <a href="#devices">Dispositivos</a>
+    <a href="#notifications">Notificaciones</a>
+  </nav>
+
+  <section class="group" id="auth">
+    <h2>Auth</h2>
+
+    <details class="endpoint" open>
+      <summary>
+        <span class="method post">POST</span>
+        <span class="path">/auth/register</span>
+        <span class="auth-badge">Pública</span>
+      </summary>
+      <div class="endpoint-body">
+        <p>Cambia el correo en cada prueba — repetirlo da <code>409 conflict</code> (ya registrado).</p>
+        <div class="snippet-label">Consola del navegador</div>
+        <div class="codewrap"><pre>fetch(`${API}/auth/register`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    full_name: "Usuario de Prueba",
+    email: `prueba.${Date.now()}@clinicacampbell.test`,
+    password: "ClaveSegura123",
+    phone_e164: "+573001234567",
+    timezone: "America/Bogota",
+  }),
+}).then(r => r.json()).then(d => { TOKEN = d.access_token; REFRESH = d.refresh_token; console.log(d); });</pre></div>
+        <div class="snippet-label">curl</div>
+        <div class="codewrap"><pre>curl -X POST "$API/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"full_name":"Usuario de Prueba","email":"prueba.123@clinicacampbell.test","password":"ClaveSegura123","phone_e164":"+573001234567","timezone":"America/Bogota"}'</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method post">POST</span>
+        <span class="path">/auth/login</span>
+        <span class="auth-badge">Pública</span>
+      </summary>
+      <div class="endpoint-body">
+        <p>Usa el correo/contraseña de un usuario ya registrado.</p>
+        <div class="snippet-label">Consola del navegador</div>
+        <div class="codewrap"><pre>fetch(`${API}/auth/login`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ email: "prueba.123@clinicacampbell.test", password: "ClaveSegura123" }),
+}).then(r => r.json()).then(d => { TOKEN = d.access_token; REFRESH = d.refresh_token; console.log(d); });</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method post">POST</span>
+        <span class="path">/auth/refresh</span>
+        <span class="auth-badge">Pública*</span>
+      </summary>
+      <div class="endpoint-body">
+        <p>*No lleva access token, pero sí exige un <code>refresh_token</code> válido en el cuerpo — de un solo uso, rota en cada llamada.</p>
+        <div class="codewrap"><pre>fetch(`${API}/auth/refresh`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ refresh_token: REFRESH }),
+}).then(r => r.json()).then(d => { TOKEN = d.access_token; REFRESH = d.refresh_token; console.log(d); });</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method get">GET</span>
+        <span class="path">/auth/me</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/auth/me`, { headers: authHeaders() }).then(r => r.json()).then(console.log);</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method patch">PATCH</span>
+        <span class="path">/auth/me</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <p>Todos los campos son opcionales — solo manda los que quieras cambiar.</p>
+        <div class="codewrap"><pre>fetch(`${API}/auth/me`, {
+  method: "PATCH",
+  headers: authHeaders(),
+  body: JSON.stringify({ full_name: "Usuario Editado", timezone: "America/Bogota" }),
+}).then(r => r.json()).then(console.log);</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method post">POST</span>
+        <span class="path">/auth/logout</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <p>Revoca el <code>refresh_token</code> — después de esto, <code>/auth/refresh</code> con el mismo token debe dar <code>401</code>.</p>
+        <div class="codewrap"><pre>fetch(`${API}/auth/logout`, {
+  method: "POST",
+  headers: authHeaders(),
+  body: JSON.stringify({ refresh_token: REFRESH }),
+}).then(r => console.log(r.status));</pre></div>
+      </div>
+    </details>
+  </section>
+
+  <section class="group" id="activities">
+    <h2>Actividades</h2>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method post">POST</span>
+        <span class="path">/activities</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <p><code>type</code>: <code>meeting</code> / <code>appointment</code> / <code>task</code>. Omitir <code>starts_at</code> crea la actividad "sin programar". <code>meeting_url</code>/<code>meeting_provider</code> son opcionales (provider: <code>meet</code>, <code>teams</code> u <code>other</code>).</p>
+        <div class="codewrap"><pre>fetch(`${API}/activities`, {
+  method: "POST",
+  headers: authHeaders(),
+  body: JSON.stringify({
+    type: "meeting",
+    title: "Reunión de prueba",
+    description: "Creada desde la guía de pruebas",
+    contact_id: null,
+    starts_at: new Date(Date.now() + 2 * 86400000).toISOString(),
+    ends_at: new Date(Date.now() + 2 * 86400000 + 3600000).toISOString(),
+    location: null,
+    meeting_url: "https://meet.google.com/abc-defg-hij",
+    meeting_provider: "meet",
+  }),
+}).then(r => r.json()).then(d => { console.log(d); window.__activityId = d.id; });</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method get">GET</span>
+        <span class="path">/activities</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <p>Filtros opcionales: <code>type</code>, <code>status</code> (<code>scheduled</code>/<code>completed</code>/<code>cancelled</code>). <code>from</code>/<code>to</code> en UTC.</p>
+        <div class="codewrap"><pre>const from = new Date(Date.now() - 7 * 86400000).toISOString();
+const to = new Date(Date.now() + 30 * 86400000).toISOString();
+fetch(`${API}/activities?from=${from}&to=${to}&page=1&limit=50`, { headers: authHeaders() })
+  .then(r => r.json()).then(console.log);</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method get">GET</span>
+        <span class="path">/activities/unscheduled</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/activities/unscheduled`, { headers: authHeaders() }).then(r => r.json()).then(console.log);</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method get">GET</span>
+        <span class="path">/activities/{id}</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <p>Usa el <code>id</code> que devolvió el <code>POST /activities</code> de arriba (queda guardado en <code>window.__activityId</code>).</p>
+        <div class="codewrap"><pre>fetch(`${API}/activities/${window.__activityId}`, { headers: authHeaders() }).then(r => r.json()).then(console.log);</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method patch">PATCH</span>
+        <span class="path">/activities/{id}</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <p><code>clear_starts_at</code>/<code>clear_ends_at</code> distinguen "no tocar" de "quitar la fecha" — mándalos siempre (el ejemplo reprograma, por eso van en <code>false</code>).</p>
+        <div class="codewrap"><pre>fetch(`${API}/activities/${window.__activityId}`, {
+  method: "PATCH",
+  headers: authHeaders(),
+  body: JSON.stringify({
+    title: "Reunión reprogramada",
+    starts_at: new Date(Date.now() + 5 * 86400000).toISOString(),
+    clear_starts_at: false,
+    clear_ends_at: false,
+  }),
+}).then(r => r.json()).then(console.log);</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method delete">DELETE</span>
+        <span class="path">/activities/{id}</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <p>Soft delete — equivale a <code>status: cancelled</code>, no borra la fila.</p>
+        <div class="codewrap"><pre>fetch(`${API}/activities/${window.__activityId}`, { method: "DELETE", headers: authHeaders() })
+  .then(r => console.log(r.status));</pre></div>
+      </div>
+    </details>
+  </section>
+
+  <section class="group" id="attachments">
+    <h2>Adjuntos</h2>
+    <div class="callout" style="margin-bottom: 16px;">
+      <strong>Subir un archivo necesita un selector real</strong>
+      La subida es <code>multipart/form-data</code> — un <code>fetch</code> de una línea no puede adjuntar un archivo de tu disco por sí solo. El bloque de "Subir" de abajo crea un selector de archivo temporal en la página; el resto sí son <code>fetch</code> normales.
+    </div>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method get">GET</span>
+        <span class="path">/activities/{id}/attachments</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/activities/${window.__activityId}/attachments`, { headers: authHeaders() })
+  .then(r => r.json()).then(console.log);</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method post">POST</span>
+        <span class="path">/activities/{id}/attachments</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <p>Máximo 10 MB. Tipos permitidos: JPEG, PNG, HEIC, PDF. Pega esto y luego elige un archivo en el selector que aparece.</p>
+        <div class="codewrap"><pre>const input = document.createElement("input");
+input.type = "file";
+input.accept = ".jpg,.jpeg,.png,.heic,.pdf";
+input.onchange = () => {
+  const form = new FormData();
+  form.append("file", input.files[0]);
+  fetch(`${API}/activities/${window.__activityId}/attachments`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${TOKEN}` }, // sin Content-Type: el navegador pone el boundary
+    body: form,
+  }).then(r => r.json()).then(d => { console.log(d); window.__attachmentId = d.id; });
+};
+input.click();</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method get">GET</span>
+        <span class="path">/activities/{id}/attachments/{attachmentId}</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <p>Devuelve los bytes íntegros del archivo — este bloque abre el resultado en una pestaña nueva para confirmar que se ve/descarga bien.</p>
+        <div class="codewrap"><pre>fetch(`${API}/activities/${window.__activityId}/attachments/${window.__attachmentId}`, { headers: authHeaders() })
+  .then(r => r.blob())
+  .then(b => window.open(URL.createObjectURL(b)));</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method delete">DELETE</span>
+        <span class="path">/activities/{id}/attachments/{attachmentId}</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/activities/${window.__activityId}/attachments/${window.__attachmentId}`, {
+  method: "DELETE",
+  headers: authHeaders(),
+}).then(r => console.log(r.status));</pre></div>
+      </div>
+    </details>
+  </section>
+
+  <section class="group" id="contacts">
+    <h2>Contactos</h2>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method post">POST</span>
+        <span class="path">/contacts</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/contacts`, {
+  method: "POST",
+  headers: authHeaders(),
+  body: JSON.stringify({ full_name: "Contacto de Prueba", phone_e164: "+573007654321", notes: null }),
+}).then(r => r.json()).then(d => { console.log(d); window.__contactId = d.id; });</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method get">GET</span>
+        <span class="path">/contacts</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <p><code>search</code> es opcional (busca por nombre).</p>
+        <div class="codewrap"><pre>fetch(`${API}/contacts?search=Prueba`, { headers: authHeaders() }).then(r => r.json()).then(console.log);</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method get">GET</span>
+        <span class="path">/contacts/{id}</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/contacts/${window.__contactId}`, { headers: authHeaders() }).then(r => r.json()).then(console.log);</pre></div>
+      </div>
+    </details>
+  </section>
+
+  <section class="group" id="devices">
+    <h2>Dispositivos</h2>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method post">POST</span>
+        <span class="path">/devices</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <p><code>platform</code>: <code>android</code> o <code>ios</code>. Es un upsert por <code>fcm_token</code> — repetirlo no duplica.</p>
+        <div class="codewrap"><pre>fetch(`${API}/devices`, {
+  method: "POST",
+  headers: authHeaders(),
+  body: JSON.stringify({ fcm_token: "token-de-prueba-123", platform: "android" }),
+}).then(r => console.log(r.status));</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method get">GET</span>
+        <span class="path">/devices</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/devices`, { headers: authHeaders() }).then(r => r.json()).then(d => { console.log(d); window.__deviceId = d[0]?.id; });</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method delete">DELETE</span>
+        <span class="path">/devices/{id}</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/devices/${window.__deviceId}`, { method: "DELETE", headers: authHeaders() })
+  .then(r => console.log(r.status));</pre></div>
+      </div>
+    </details>
+  </section>
+
+  <section class="group" id="notifications">
+    <h2>Notificaciones</h2>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method get">GET</span>
+        <span class="path">/notifications</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/notifications?unread_only=false&page=1`, { headers: authHeaders() })
+  .then(r => r.json()).then(d => { console.log(d); window.__notificationId = d.items[0]?.id; });</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method get">GET</span>
+        <span class="path">/notifications/unread-count</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/notifications/unread-count`, { headers: authHeaders() }).then(r => r.json()).then(console.log);</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method patch">PATCH</span>
+        <span class="path">/notifications/{id}/ack</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/notifications/${window.__notificationId}/ack`, { method: "PATCH", headers: authHeaders() })
+  .then(r => console.log(r.status));</pre></div>
+      </div>
+    </details>
+
+    <details class="endpoint">
+      <summary>
+        <span class="method post">POST</span>
+        <span class="path">/notifications/ack-all</span>
+        <span class="auth-badge">Requiere sesión</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="codewrap"><pre>fetch(`${API}/notifications/ack-all`, { method: "POST", headers: authHeaders() })
+  .then(r => console.log(r.status));</pre></div>
+      </div>
+    </details>
+  </section>
+
+  <footer>
+    Endpoints extraídos de los repositorios reales de <code>omnitask_app/lib/features/*/data/*.dart</code> — no de la documentación de arquitectura. Detalle completo del contrato en <a href="ARQUITECTURA.md">ARQUITECTURA.md</a> §6.
+  </footer>
+</div>

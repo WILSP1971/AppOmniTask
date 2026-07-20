@@ -3676,6 +3676,16 @@ Al construir la pantalla de consulta por fecha con un `DateFormat('...', 'es_CO'
 
 A partir de esta conversación, y confirmado explícitamente por el usuario, ya no se pide confirmación antes de escribir código, actualizar la documentación, o hacer `commit`/`push` a `main` en este repositorio — reemplaza el patrón de "¿confirmas commit y push?" usado en el resto de esta conversación. Sigue pidiéndose confirmación para lo genuinamente difícil de revertir: force-push, `reset --hard`, borrar ramas/tags, o tocar secretos/infraestructura fuera de este repo. La regla completa vive en [`CLAUDE.md`](../CLAUDE.md) en la raíz del proyecto.
 
+## §29 — Adjuntos, link de reunión, rediseño real, y guía de pruebas de la API
+
+Entre §28 y esta sección, otra sesión trabajó en paralelo usando el flujo de agentes de `.swarm/` (DOCTOR STRANGE/CAPTAIN AMERICA/WOLVERINE/BLACK WIDOW/DAREDEVIL/HAWKEYE) y llevó la app de v1.0.6 a v1.0.9: **SPEC-002** (adjuntos de documentos/imágenes en actividades) y **SPEC-003** (link de reunión Meet/Teams/otro, con copiar/abrir/compartir) quedaron `IMPLEMENTADA`, y **SPEC-001** reemplazó por completo el calendario de Syncfusion por `table_calendar` (círculo de selección + puntitos por tipo, tarjetas de "Mis citas", bottom nav flotante) con un tema oscuro Material 3 propagado a toda la app. El detalle completo de criterios de aceptación, checkpoints y limitaciones de cada SPEC vive en `.swarm/CHECKPOINTS.md` y `.swarm/specs.json` — no se duplica aquí.
+
+Un hallazgo real de esa etapa: `app-v1.0.10` quedó con el **build de release roto** en GitHub Actions (`flutter analyze`/`flutter test` pasaban, pero `flutter build apk --release` no) — `file_picker ^11.0.2` deja de aplicar el plugin de Gradle `org.jetbrains.kotlin.android` cuando detecta AGP≥9, asumiendo el soporte de "Built-in Kotlin" que Flutter 3.44.6 todavía no tiene para ese plugin, así que sus fuentes `.kt` quedaban sin compilar y `GeneratedPluginRegistrant.java` fallaba con `cannot find symbol: class FilePickerPlugin`. Se corrigió fijando `file_picker: 10.3.10` (que siempre aplica el plugin sin esa detección condicional) — confirmado con un `flutter build apk --release` real, mismo keystore. Publicado como `app-v1.0.11`.
+
+### Guía de pruebas de la API (`docs/pruebas-api.html`)
+
+Página nueva, independiente de este documento (no es arquitectura, es una referencia operativa): los 26 endpoints reales que invoca `omnitask_app` — extraídos de los repositorios (`lib/features/*/data/*.dart`), no de esta documentación — agrupados por Auth/Actividades/Adjuntos/Contactos/Dispositivos/Notificaciones, cada uno con datos de ejemplo y un snippet `fetch()` listo para pegar en la consola del navegador (F12), más su equivalente en `curl`. Pensada para que el Lead pueda validar la API real sin instalar Postman ni nada aparte — subir un adjunto es la única excepción que necesita un selector de archivo real en vez de un `fetch` de una línea, y el propio snippet lo crea al vuelo.
+
 ---
 
 *Documento de arquitectura v1 · 11 de julio de 2026 · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.*

@@ -536,6 +536,7 @@
       <a href="#android-release">§26 Primer release de Android instalable</a>
       <a href="#calendario-vistas">§27 Calendario: vistas Día/Semana/Mes/Agenda</a>
       <a href="#menu-lateral">§28 Menú lateral y regla de autorización permanente</a>
+      <a href="#adjuntos-reunion-rediseno">§29 Adjuntos, link de reunión, rediseño y guía de pruebas de API</a>
     </nav>
 
     <main>
@@ -4078,10 +4079,19 @@ jobs:
         <p>A partir de esta conversación, y confirmado explícitamente por el usuario, ya no se pide confirmación antes de escribir código, actualizar la documentación, o hacer <code>commit</code>/<code>push</code> a <code>main</code> en este repositorio — reemplaza el patrón de "¿confirmas commit y push?" usado en el resto de esta conversación. Sigue pidiéndose confirmación para lo genuinamente difícil de revertir: force-push, <code>reset --hard</code>, borrar ramas/tags, o tocar secretos/infraestructura fuera de este repo. La regla completa vive en <a href="../CLAUDE.md"><code>CLAUDE.md</code></a> en la raíz del proyecto.</p>
       </section>
 
+      <section id="adjuntos-reunion-rediseno">
+        <div class="sec-head"><span class="sec-num">§29</span><h2>Adjuntos, link de reunión, rediseño real, y guía de pruebas de la API</h2></div>
+        <p>Entre §28 y esta sección, otra sesión trabajó en paralelo usando el flujo de agentes de <code>.swarm/</code> (DOCTOR STRANGE/CAPTAIN AMERICA/WOLVERINE/BLACK WIDOW/DAREDEVIL/HAWKEYE) y llevó la app de v1.0.6 a v1.0.9: <b>SPEC-002</b> (adjuntos de documentos/imágenes en actividades) y <b>SPEC-003</b> (link de reunión Meet/Teams/otro, con copiar/abrir/compartir) quedaron <code>IMPLEMENTADA</code>, y <b>SPEC-001</b> reemplazó por completo el calendario de Syncfusion por <code>table_calendar</code> (círculo de selección + puntitos por tipo, tarjetas de "Mis citas", bottom nav flotante) con un tema oscuro Material 3 propagado a toda la app. El detalle completo de criterios de aceptación, checkpoints y limitaciones de cada SPEC vive en <code>.swarm/CHECKPOINTS.md</code> y <code>.swarm/specs.json</code> — no se duplica aquí.</p>
+        <p>Un hallazgo real de esa etapa: <code>app-v1.0.10</code> quedó con el <b>build de release roto</b> en GitHub Actions (<code>flutter analyze</code>/<code>flutter test</code> pasaban, pero <code>flutter build apk --release</code> no) — <code>file_picker ^11.0.2</code> deja de aplicar el plugin de Gradle <code>org.jetbrains.kotlin.android</code> cuando detecta AGP≥9, asumiendo el soporte de "Built-in Kotlin" que Flutter 3.44.6 todavía no tiene para ese plugin, así que sus fuentes <code>.kt</code> quedaban sin compilar y <code>GeneratedPluginRegistrant.java</code> fallaba con <code>cannot find symbol: class FilePickerPlugin</code>. Se corrigió fijando <code>file_picker: 10.3.10</code> (que siempre aplica el plugin sin esa detección condicional) — confirmado con un <code>flutter build apk --release</code> real, mismo keystore. Publicado como <code>app-v1.0.11</code>.</p>
+
+        <h3>Guía de pruebas de la API (<code>docs/pruebas-api.html</code>)</h3>
+        <p>Página nueva, independiente de este documento (no es arquitectura, es una referencia operativa): los 26 endpoints reales que invoca <code>omnitask_app</code> — extraídos de los repositorios (<code>lib/features/*/data/*.dart</code>), no de esta documentación — agrupados por Auth/Actividades/Adjuntos/Contactos/Dispositivos/Notificaciones, cada uno con datos de ejemplo y un snippet <code>fetch()</code> listo para pegar en la consola del navegador (F12), más su equivalente en <code>curl</code>. Pensada para que el Lead pueda validar la API real sin instalar Postman ni nada aparte — subir un adjunto es la única excepción que necesita un selector de archivo real en vez de un <code>fetch</code> de una línea, y el propio snippet lo crea al vuelo.</p>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §27/§28 agregadas: vistas de calendario Día/Semana/Mes/Agenda, menú lateral, y regla de autorización permanente en CLAUDE.md · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
+    OmniTask — documento de arquitectura v1 · 11 de julio de 2026 · §29 agregada: adjuntos y link de reunión implementados (SPEC-002/003), rediseño real del Home (SPEC-001), fix del build roto de app-v1.0.10, y guía de pruebas de la API en docs/pruebas-api.html · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.
   </footer>
 </div>
