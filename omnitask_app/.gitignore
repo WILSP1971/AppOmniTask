@@ -14,8 +14,15 @@ build/
 *.freezed.dart
 *.g.dart
 
-# Firebase — credenciales específicas del proyecto (§20), nunca al repo.
-lib/firebase_options.dart
+# Firebase (§20, SPEC-004): firebase_options.dart y google-services.json NO
+# son secretos según la propia documentación de Firebase (identifican la app,
+# el acceso se controla con reglas de seguridad, no con ocultar el archivo) —
+# pero google-services.json se mantiene fuera del repo de todas formas porque
+# main.dart no lo importa directamente (solo Gradle lo necesita en el build
+# nativo, ya cubierto por el secret de android-release.yml). firebase_options.dart
+# SÍ se versiona: main.dart lo importa de forma incondicional, así que sin él
+# ni flutter analyze ni flutter test compilan en un checkout limpio (CI, o
+# cualquier otra máquina).
 android/app/google-services.json
 ios/Runner/GoogleService-Info.plist
 
