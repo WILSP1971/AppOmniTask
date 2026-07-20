@@ -17,5 +17,8 @@ class ActivityDraft with _$ActivityDraft {
     DateTime? startsAt,
     DateTime? endsAt,
     String? location,
+    // SPEC-003 (§6, §3 RF1/RF2): reunión manual, opcional al crear.
+    String? meetingUrl,
+    String? meetingProvider,
   }) = _ActivityDraft;
 }

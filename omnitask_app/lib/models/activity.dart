@@ -24,6 +24,9 @@ class Activity with _$Activity {
     String? location,
     required DateTime createdAt,
     required DateTime updatedAt,
+    // SPEC-003 (§6, §3 RF1): reunión manual (Meet/Teams/otro), opcional.
+    String? meetingUrl,
+    String? meetingProvider,
     @Default(<ReminderSummary>[]) List<ReminderSummary> reminders,
   }) = _Activity;
 

@@ -19,6 +19,8 @@ class ActivityRepository {
       'starts_at': draft.startsAt?.toUtc().toIso8601String(),
       'ends_at': draft.endsAt?.toUtc().toIso8601String(),
       'location': draft.location,
+      'meeting_url': draft.meetingUrl,
+      'meeting_provider': draft.meetingProvider,
     });
     return Activity.fromJson(response.data as Map<String, dynamic>);
   }
@@ -73,6 +75,9 @@ class ActivityRepository {
 
   /// clearStartsAt/clearEndsAt distinguen "no tocar" de "limpiar" (§23) — un
   /// simple null no alcanza para expresar "quitar la fecha" sin ambigüedad.
+  /// meetingUrl/meetingProvider siguen el mismo criterio "NULL = no lo
+  /// toques" que title/description/location (SPEC-003 §6): no hay flag de
+  /// "limpiar" porque no fue pedido por la SPEC.
   Future<Activity> update(
     String id, {
     String? title,
@@ -83,6 +88,8 @@ class ActivityRepository {
     bool clearEndsAt = false,
     String? status,
     String? location,
+    String? meetingUrl,
+    String? meetingProvider,
   }) async {
     final response = await _dio.patch('/activities/$id', data: {
       if (title != null) 'title': title,
@@ -93,6 +100,8 @@ class ActivityRepository {
       'clear_ends_at': clearEndsAt,
       if (status != null) 'status': status,
       if (location != null) 'location': location,
+      if (meetingUrl != null) 'meeting_url': meetingUrl,
+      if (meetingProvider != null) 'meeting_provider': meetingProvider,
     });
     return Activity.fromJson(response.data as Map<String, dynamic>);
   }

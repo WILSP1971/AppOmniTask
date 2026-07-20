@@ -6,6 +6,8 @@ import 'package:intl/intl.dart';
 import '../../../models/activity.dart';
 import '../application/activities_for_range_provider.dart';
 import '../application/activity_actions_controller.dart';
+import 'widgets/attachments_section.dart';
+import 'widgets/meeting_section.dart';
 
 /// Detalle de solo lectura + acciones (§14). Si startsAt es null, muestra el
 /// mismo banner de "pendiente por programar" que usa el backlog (§12), con
@@ -91,6 +93,11 @@ class _DetailBody extends ConsumerWidget {
             ),
           ),
         ),
+        const SizedBox(height: 16),
+        MeetingSection(activity: activity),
+        if (activity.meetingUrl != null && activity.meetingUrl!.isNotEmpty)
+          const SizedBox(height: 16),
+        AttachmentsSection(activityId: activity.id),
         const SizedBox(height: 16),
         Text('Recordatorios', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 8),

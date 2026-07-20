@@ -44,6 +44,18 @@ dependencies:
   intl: ^0.20.2
   cupertino_icons: ^1.0.8
 
+  # Adjuntos en actividades (SPEC-002 §3 RF6): selector de imagen/cámara y
+  # de documentos PDF, apertura con el visor del sistema.
+  image_picker: ^1.2.3
+  file_picker: ^11.0.2
+  open_filex: ^4.7.0
+
+  # Link de reunión (SPEC-003 §3 RF5/RF6): abrir en navegador/app externa y
+  # compartir por el share sheet del dispositivo.
+  url_launcher: ^6.3.2
+  share_plus: ^11.0.0
+  path_provider: ^2.1.6
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

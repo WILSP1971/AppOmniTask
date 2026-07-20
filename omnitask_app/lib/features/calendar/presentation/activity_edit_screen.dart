@@ -9,6 +9,7 @@ import '../application/activities_for_range_provider.dart';
 import '../application/activity_form_controller.dart';
 import 'widgets/contact_picker_field.dart';
 import 'widgets/date_time_field.dart';
+import 'widgets/meeting_field.dart';
 
 /// Un único formulario sirve para crear, editar y "programar" una actividad
 /// sin fecha (§14) — asignar fecha por primera vez y reprogramar son, para
@@ -25,11 +26,13 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _meetingUrlController = TextEditingController();
   String _type = 'appointment';
   Contact? _contact;
   bool _hasDate = true;
   DateTime? _startsAt;
   DateTime? _endsAt;
+  String? _meetingProvider;
   bool _initialized = false;
 
   bool get _isEditing => widget.activityId != null;
@@ -38,6 +41,7 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _meetingUrlController.dispose();
     super.dispose();
   }
 
@@ -50,6 +54,8 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
     _hasDate = existing.startsAt != null;
     _startsAt = existing.startsAt?.toLocal();
     _endsAt = existing.endsAt?.toLocal();
+    _meetingUrlController.text = existing.meetingUrl ?? '';
+    _meetingProvider = existing.meetingProvider;
     _initialized = true;
   }
 
@@ -124,6 +130,17 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: MeetingField(
+                  provider: _meetingProvider,
+                  urlController: _meetingUrlController,
+                  onProviderChanged: (value) => setState(() => _meetingProvider = value),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -157,6 +174,8 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
 
     final description =
         _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim();
+    final meetingUrl =
+        _meetingUrlController.text.trim().isEmpty ? null : _meetingUrlController.text.trim();
     final controller = ref.read(activityFormControllerProvider.notifier);
 
     final saved = _isEditing
@@ -168,6 +187,8 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
             clearStartsAt: !_hasDate,
             endsAt: _hasDate ? _endsAt : null,
             clearEndsAt: !_hasDate,
+            meetingUrl: meetingUrl,
+            meetingProvider: _meetingProvider,
           )
         : await controller.create(ActivityDraft(
             type: _type,
@@ -176,6 +197,8 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
             contactId: _contact?.id,
             startsAt: _hasDate ? _startsAt : null,
             endsAt: _hasDate ? _endsAt : null,
+            meetingUrl: meetingUrl,
+            meetingProvider: _meetingProvider,
           ));
 
     if (saved != null && mounted) context.pop();

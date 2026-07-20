@@ -4,6 +4,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- SPEC-002 (§3 RF6, R2): adjuntar imágenes vía cámara o galería.
+         READ_MEDIA_IMAGES cubre selectores de galería en versiones de Android
+         que no usan el Photo Picker moderno (que no requiere permiso). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
     <application
         android:label="OmniTask"
         android:name="${applicationName}"
