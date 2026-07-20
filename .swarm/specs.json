@@ -2,9 +2,10 @@
   "next_id": 4,
   "counters": {
     "PROPUESTA": 0,
-    "APROBADA": 3,
+    "APROBADA": 1,
     "RECHAZADA": 0,
-    "IMPLEMENTADA": 0
+    "IMPLEMENTADA": 0,
+    "EN_VERIFICACION": 2
   },
   "specs": [
     {
@@ -20,24 +21,26 @@
     {
       "id": "SPEC-002",
       "titulo": "Adjuntos en actividades (documentos e imagenes) — Punto 7",
-      "estado": "APROBADA",
+      "estado": "EN_VERIFICACION",
       "archivo": ".swarm/specs/SPEC-002.md",
       "creada": "2026-07-20",
       "aprobada": "2026-07-20",
       "autor": "DOCTOR STRANGE",
       "responsable": "CAPTAIN AMERICA",
-      "aprobador": "Lead humano"
+      "aprobador": "Lead humano",
+      "nota": "Backend (.NET + migraciones) y frontend (Flutter) implementados en main. Pendiente revision de WOLVERINE y pruebas de HAWKEYE."
     },
     {
       "id": "SPEC-003",
       "titulo": "Link de reunion (Meet/Teams) en actividades — Punto 8",
-      "estado": "APROBADA",
+      "estado": "EN_VERIFICACION",
       "archivo": ".swarm/specs/SPEC-003.md",
       "creada": "2026-07-20",
       "aprobada": "2026-07-20",
       "autor": "DOCTOR STRANGE",
       "responsable": "CAPTAIN AMERICA",
-      "aprobador": "Lead humano"
+      "aprobador": "Lead humano",
+      "nota": "Backend (.NET + migraciones) y frontend (Flutter) implementados en main. Pendiente revision de WOLVERINE y pruebas de HAWKEYE."
     }
   ]
 }
