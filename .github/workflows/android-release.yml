@@ -46,6 +46,14 @@ jobs:
           storeFile=omnitask-release.jks
           EOF
 
+      # El plugin de Gradle com.google.gms.google-services (agregado por
+      # `flutterfire configure`, SPEC-004 §A) falla el build si este archivo
+      # no existe — proyecto omnitask-agenda, el mismo que ya usa el backend.
+      - name: Reconstruir google-services.json desde el secret
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
+
       - name: Derivar el nombre de versión del tag (app-v1.2.3 -> 1.2.3)
         id: version
         run: echo "name=${GITHUB_REF_NAME#app-v}" >> "$GITHUB_OUTPUT"
@@ -58,10 +66,11 @@ jobs:
             --dart-define=API_BASE_URL=https://appsintranet.esculapiosis.com/APIOmniTask/api/v1
 
       # El runner se destruye al terminar el job, pero no hay razón para
-      # dejar el keystore en el filesystem más tiempo del necesario.
-      - name: Borrar el keystore del runner
+      # dejar el keystore ni google-services.json en el filesystem más
+      # tiempo del necesario.
+      - name: Borrar el keystore y google-services.json del runner
         if: always()
-        run: rm -f android/app/omnitask-release.jks android/key.properties
+        run: rm -f android/app/omnitask-release.jks android/key.properties android/app/google-services.json
 
       - name: Preparar los assets del release
         run: |

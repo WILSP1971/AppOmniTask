@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,11 +8,15 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/notifications/application/local_notifications_service.dart';
 import 'features/notifications/application/push_message_listener.dart';
+import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // await Firebase.initializeApp(); — requiere firebase_options.dart generado
-  // con `flutterfire configure` (§20), específico de cada proyecto Firebase.
+  // Proyecto omnitask-agenda (SPEC-004 §A) — el mismo que ya usa el backend
+  // en producción vía firebase-admin.json. Los guards `Firebase.apps.isEmpty`
+  // en device_registration_notifier.dart/push_message_listener.dart/
+  // app_router.dart/devices_provider.dart dejan de saltarse desde aquí.
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Sin esto, cualquier DateFormat con locale explícito (p.ej. 'es_CO' en el
   // detalle de actividad) lanza LocaleDataException al primer uso.
