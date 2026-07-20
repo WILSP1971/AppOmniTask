@@ -275,3 +275,47 @@ BEGIN
     RETURN QUERY SELECT * FROM activities WHERE id = p_activity_id;
 END;
 $$ LANGUAGE plpgsql;
+
+-- fn_list_activities (03_*.sql) usa RETURNS TABLE con columnas explícitas de
+-- activities, que nunca se actualizó al agregar meeting_url/meeting_provider
+-- en 05_activity_meeting.sql. Como ActivityService.MapActivity (C#) lee esas
+-- dos columnas por nombre en TODAS las filas de actividad (list/get/create/
+-- update), listar actividades fallaba con "Field not found in row:
+-- meeting_url" (NpgsqlDataReader ni siquiera tiene la columna, no es un tema
+-- de NULL). fn_get_activity_by_id y fn_list_unscheduled_activities no sufren
+-- esto porque usan RETURNS SETOF activities + SELECT * (traen columnas
+-- nuevas automáticamente). Se agregan aquí al final del RETURNS TABLE y del
+-- SELECT, antes de total_count, que se mantiene como última columna.
+DROP FUNCTION IF EXISTS fn_list_activities(
+    UUID, TIMESTAMPTZ, TIMESTAMPTZ, activity_type, activity_status, INT, INT
+);
+
+CREATE OR REPLACE FUNCTION fn_list_activities(
+    p_user_id UUID,
+    p_from TIMESTAMPTZ,
+    p_to TIMESTAMPTZ,
+    p_type activity_type,
+    p_status activity_status,
+    p_page INT,
+    p_limit INT
+) RETURNS TABLE(
+    id UUID, user_id UUID, contact_id UUID, type activity_type, title TEXT, description TEXT,
+    status activity_status, starts_at TIMESTAMPTZ, ends_at TIMESTAMPTZ, timezone TEXT,
+    location TEXT, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ,
+    meeting_url TEXT, meeting_provider TEXT, total_count BIGINT
+) AS $$
+    SELECT
+        a.id, a.user_id, a.contact_id, a.type, a.title, a.description, a.status,
+        a.starts_at, a.ends_at, a.timezone, a.location, a.created_at, a.updated_at,
+        a.meeting_url, a.meeting_provider,
+        COUNT(*) OVER() AS total_count
+    FROM activities a
+    WHERE a.user_id = p_user_id
+      AND (p_from IS NULL OR a.starts_at >= p_from)
+      AND (p_to IS NULL OR a.starts_at <= p_to)
+      AND (p_type IS NULL OR a.type = p_type)
+      AND (p_status IS NULL OR a.status = p_status)
+    ORDER BY a.starts_at
+    OFFSET (GREATEST(p_page, 1) - 1) * p_limit
+    LIMIT p_limit;
+$$ LANGUAGE sql STABLE;
