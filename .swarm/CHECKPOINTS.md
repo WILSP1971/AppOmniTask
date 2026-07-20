@@ -206,3 +206,54 @@ navegador externo / share sheet del SO) siguen sin verificación automatizada
 end-to-end en dispositivo real — solo por lectura de código y presencia de los
 botones en widget test. Recomendado hacer una prueba manual puntual en un
 dispositivo Android real antes de anunciar la función a usuarios finales.
+
+## SPEC-004 — Push end-to-end y actividades sin fecha visibles/accesibles (implementada por CAPTAIN AMERICA 2026-07-20)
+
+Infraestructura de Firebase (previa a esta SPEC, commits `86c36e0`/`fb7f840`):
+`flutterfire configure` contra el proyecto `omnitask-agenda` (confirmado por el
+Lead como el mismo que usa el backend vía `firebase-admin.json`, tras descubrir
+que la primera cuenta usada para el login no tenía acceso a ese proyecto sino a
+uno distinto — `zealous-valor-gsjh2` — y corregir con la cuenta correcta,
+`ingenierodesarrollador@clinicacampbell.com.co`). `firebase_options.dart`
+generado y comiteado (no es secreto según la documentación de Firebase);
+`google-services.json` gitignored, reconstruido en `android-release.yml` desde
+el secret `GOOGLE_SERVICES_JSON_BASE64`. `main.dart` llama a
+`Firebase.initializeApp(...)` de verdad.
+
+- [x] CA1: `registerCurrentDevice()` (llamado tras login/registro/restauración
+      de sesión) ahora pide permiso (`FirebaseMessaging.instance.requestPermission()`,
+      idempotente) antes de `getToken()` — con Firebase inicializado, el flujo
+      completo hasta `POST /devices` deja de cortarse en el guard
+      `Firebase.apps.isEmpty`. Verificable en producción con
+      `docs/pruebas-api.html` (`GET /devices`).
+- [x] CA2: `devices_screen.dart` — lista vacía muestra `_EmptyDevicesState`
+      (mensaje + botón "Activar notificaciones en este dispositivo") en vez de
+      una pantalla en blanco; el botón llama a
+      `deviceRegistrationProvider.notifier.registerCurrentDevice()` y refresca
+      `myDevicesProvider`.
+- [x] CA3: botón ☰ agregado en `AgendaHeader` (`Scaffold.of(context).openDrawer()`)
+      — el Drawer y "Actividades sin programar" dejan de ser inalcanzables
+      desde el Home.
+- [x] CA4: nueva sección "Pendientes por programar" en `calendar_screen.dart`,
+      debajo de "Mis citas", reutilizando `AppointmentsSection`/`AppointmentCard`
+      tal cual (parámetro `title` agregado a `AppointmentsSection` para poder
+      reutilizarlo con otro encabezado) contra `unscheduledActivitiesProvider`
+      — cero componentes ni colores nuevos.
+- [x] CA5: "Editar" en una tarjeta de "Pendientes" ya llevaba a
+      `/activities/{id}/edit`, que ya soporta asignar fecha (sin cambios de
+      lógica necesarios — ya existía desde antes de esta SPEC).
+- [x] CA6 (transversal): `flutter analyze` 0 issues; `flutter test` 49/49 en
+      verde; `flutter build apk --release` compila y firma con el keystore
+      existente (mismo certificado SHA-256 `960d1db5...`, se instala como
+      actualización).
+- [x] C-NR (no regresión): `git diff` de `calendar_screen.dart` confirma que
+      solo se agregó un import, un `ref.watch` nuevo y una sección al final del
+      `Column` — `initState`, `_handleMonthChanged`, `skipLoadingOnReload`,
+      `MonthCalendar`/`onPageChanged` y los guards `Firebase.apps.isEmpty`
+      preexistentes no se tocaron.
+
+**Limitación documentada, no bloqueante:** R1 de la SPEC — no hay dispositivo ni
+emulador Android real en este entorno de trabajo, así que la entrega real de
+una notificación push a un celular queda pendiente de verificación manual del
+Lead tras instalar el release. Todo lo demás (compilación, firma, flujo hasta
+`POST /devices`, UI de las 3 pantallas tocadas) sí se verificó de verdad.

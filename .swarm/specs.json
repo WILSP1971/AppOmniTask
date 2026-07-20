@@ -1,10 +1,10 @@
 {
-  "next_id": 4,
+  "next_id": 5,
   "counters": {
     "PROPUESTA": 0,
     "APROBADA": 1,
     "RECHAZADA": 0,
-    "IMPLEMENTADA": 2,
+    "IMPLEMENTADA": 3,
     "EN_VERIFICACION": 0
   },
   "specs": [
@@ -43,6 +43,19 @@
       "responsable": "CAPTAIN AMERICA",
       "aprobador": "Lead humano",
       "nota": "Backend CI y Flutter CI en verde (mismo fix que SPEC-002, commit 4af7a67). Limitacion documentada no bloqueante: CA4/CA5 (abrir navegador externo / share sheet del SO) solo verificados por lectura de codigo y presencia de UI, no con un dispositivo real — recomendado hacer una prueba manual puntual antes de anunciar la funcion a usuarios finales. Detalle completo en .swarm/CHECKPOINTS.md."
+    },
+    {
+      "id": "SPEC-004",
+      "titulo": "Push end-to-end y actividades sin fecha visibles/accesibles",
+      "estado": "IMPLEMENTADA",
+      "archivo": ".swarm/specs/SPEC-004.md",
+      "creada": "2026-07-20",
+      "aprobada": "2026-07-20",
+      "implementada": "2026-07-20",
+      "autor": "DOCTOR STRANGE",
+      "responsable": "CAPTAIN AMERICA",
+      "aprobador": "Lead humano",
+      "nota": "Infraestructura de Firebase (flutterfire configure contra el proyecto omnitask-agenda, el mismo del backend, confirmado por el Lead) ya implementada en commits previos (86c36e0, fb7f840). Esta SPEC agrega la UX: permiso de notificaciones tras login/registro/restauración de sesión, empty-state + botón de activación en Dispositivos, botón de menú en AgendaHeader, y sección 'Pendientes por programar' en el Home. flutter analyze 0 issues, flutter test 49/49, flutter build apk --release compila y firma con el keystore existente. Limitacion documentada no bloqueante: sin dispositivo/emulador real en este entorno, la entrega efectiva de una notificación push queda pendiente de verificación manual del Lead. Detalle completo en .swarm/CHECKPOINTS.md."
     }
   ]
 }

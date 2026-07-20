@@ -7,10 +7,13 @@ import '../activity_colors.dart';
 /// Encabezado de la Agenda (SPEC-001 §2): mes en azul con navegación ‹ ›,
 /// campana con badge rojo (→ /notifications) y lupa de búsqueda sobre las
 /// actividades ya cargadas en el mes visible. Reemplaza visualmente al AppBar
-/// que tenía calendar_screen.dart, conservando sus mismas acciones (más el
-/// atajo de pendientes por programar se mantiene disponible desde el Drawer
-/// y el bottom nav, así que aquí solo se repite notificaciones — la acción
-/// más prioritaria del mockup).
+/// que tenía calendar_screen.dart, conservando sus mismas acciones.
+///
+/// Al ser un `PreferredSizeWidget` a medida (no un `AppBar` real), Flutter no
+/// agrega solo el botón de menú del Drawer como sí hace con un AppBar de
+/// verdad — sin el ☰ explícito de aquí, el Drawer (y "Actividades sin
+/// programar" dentro de él) quedaba inalcanzable desde el Home (SPEC-004 RF3,
+/// bug real reportado en producción v1.0.11).
 class AgendaHeader extends StatelessWidget implements PreferredSizeWidget {
   const AgendaHeader({
     super.key,
@@ -45,6 +48,12 @@ class AgendaHeader extends StatelessWidget implements PreferredSizeWidget {
           children: [
             Row(
               children: [
+                IconButton(
+                  tooltip: 'Abrir menú',
+                  icon: const Icon(Icons.menu),
+                  color: colorScheme.primary,
+                  onPressed: () => Scaffold.of(context).openDrawer(),
+                ),
                 IconButton(
                   tooltip: 'Mes anterior',
                   icon: const Icon(Icons.chevron_left),

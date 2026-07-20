@@ -17,9 +17,15 @@ class DeviceRegistration extends _$DeviceRegistration {
   FutureOr<void> build() {}
 
   Future<void> registerCurrentDevice() async {
-    // Sin proyecto Firebase configurado (§20) no hay app por defecto — login
-    // no debe fallar por eso, solo se omite el registro del dispositivo.
+    // Sin proyecto Firebase configurado no hay app por defecto — login no
+    // debe fallar por eso, solo se omite el registro del dispositivo.
     if (Firebase.apps.isEmpty) return;
+
+    // Pedir permiso es idempotente (SPEC-004 RF1): si el usuario ya
+    // respondió antes, el SO no vuelve a mostrar el diálogo — seguro
+    // llamarlo en cada login/registro/restauración de sesión. Si lo niega,
+    // no se lanza; solo no llegarán notificaciones visibles (RNF4).
+    await FirebaseMessaging.instance.requestPermission();
 
     final token = await FirebaseMessaging.instance.getToken();
     if (token == null) return;

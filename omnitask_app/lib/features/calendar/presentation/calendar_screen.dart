@@ -5,6 +5,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../../core/navigation/app_bottom_nav.dart';
 import '../../../core/navigation/app_drawer.dart';
 import '../../../models/activity.dart';
+import '../../backlog/application/unscheduled_activities_provider.dart';
 import '../../notifications/application/notifications_providers.dart';
 import '../application/activities_for_range_provider.dart';
 import '../application/visible_range_provider.dart';
@@ -91,6 +92,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final activitiesAsync = ref.watch(activitiesForRangeProvider);
     final unreadCount =
         ref.watch(unreadNotificationsCountProvider).valueOrNull ?? 0;
+    // SPEC-004 RF4: antes solo alcanzables desde el Drawer/Backlog — ahora
+    // también visibles de un vistazo en el Home, sin navegar a otra pantalla.
+    final unscheduledAsync = ref.watch(unscheduledActivitiesProvider);
 
     return Scaffold(
       drawer: const AppDrawer(),
@@ -130,6 +134,18 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   emptyLabel: _searchQuery.isNotEmpty
                       ? 'Sin resultados para "$_searchQuery"'
                       : 'No tienes citas este día',
+                ),
+                const SizedBox(height: 20),
+                unscheduledAsync.when(
+                  data: (unscheduled) => AppointmentsSection(
+                    title: 'Pendientes por programar',
+                    activities: unscheduled,
+                    emptyLabel: 'No tienes actividades pendientes por programar',
+                  ),
+                  // Sección secundaria: un error aquí no debe tapar "Mis
+                  // citas" ya cargada arriba con una pantalla de error entera.
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
                 ),
               ],
             ),
