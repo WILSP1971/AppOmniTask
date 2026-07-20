@@ -28,7 +28,7 @@
       "autor": "DOCTOR STRANGE",
       "responsable": "CAPTAIN AMERICA",
       "aprobador": "Lead humano",
-      "nota": "Backend (.NET + migraciones) y frontend (Flutter) implementados en main. Pendiente revision de WOLVERINE y pruebas de HAWKEYE."
+      "nota": "HAWKEYE (2026-07-20): tests escritos y ejecutados, ver .swarm/CHECKPOINTS.md. Todo lo ejecutable en este sandbox pasa en verde (flutter analyze 0 issues, flutter test 51/51, dotnet test backend 81 total/49 passed/0 failed). NO se marca IMPLEMENTADA porque 9 tests de integracion nuevos (AttachmentServiceTests: CA2-CA8) requieren Postgres real y este sandbox no tiene Postgres ni Docker — quedan como [SkippableFact] correctamente saltados, no fallados. Falta que backend-ci.yml los corra contra el service container de Postgres 16 ya configurado para confirmar CA2-CA8 de punta a punta. El caso limite de RequestSizeLimit/Kestrel (CA5) solo se verifico por reflexion estatica del atributo, no con un POST HTTP real de >11MB (no hay WebApplicationFactory/TestServer en el proyecto)."
     },
     {
       "id": "SPEC-003",
@@ -40,7 +40,7 @@
       "autor": "DOCTOR STRANGE",
       "responsable": "CAPTAIN AMERICA",
       "aprobador": "Lead humano",
-      "nota": "Backend (.NET + migraciones) y frontend (Flutter) implementados en main. Pendiente revision de WOLVERINE y pruebas de HAWKEYE."
+      "nota": "HAWKEYE (2026-07-20): tests escritos y ejecutados, ver .swarm/CHECKPOINTS.md. Todo lo ejecutable en este sandbox pasa en verde (flutter analyze 0 issues, flutter test 51/51, dotnet test backend 81 total/49 passed/0 failed). NO se marca IMPLEMENTADA porque 6 tests de integracion nuevos (ActivityServiceMeetingTests: CA1/CA2/CA7) requieren Postgres real, no disponible en este sandbox — quedan como [SkippableFact] correctamente saltados. Ademas CA4 (abrir navegador externo) y CA5 (share sheet del SO) solo se verificaron por lectura de codigo, no con un dispositivo/emulador real. Falta CI con Postgres real + una verificacion manual/E2E de CA4-CA5 en un dispositivo."
     }
   ]
 }
