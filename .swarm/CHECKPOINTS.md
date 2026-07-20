@@ -119,13 +119,21 @@ limite de Kestrel).
       no encuentra ninguna coincidencia — cero cambios en la logica del
       calendario.
 
-**Qué falta para verificar al 100% en CI real**: correr `dotnet test` con
-`TEST_DATABASE_URL` apuntando a un Postgres real (ya configurado en
-`backend-ci.yml` con el service container `postgres:16` + aplicando
-`db/04_activity_attachments.sql` y `db/06_stored_procedures_attachments_and_meeting.sql`)
-para que los 15 tests de integracion nuevos corran de verdad y no solo se
-salten. HAWKEYE no tiene forma de forzar eso desde este sandbox (no hay
-Postgres ni Docker instalados aquí).
+**Verificado en CI real (2026-07-20, post-implementación):** el primer run de
+`Backend CI` contra Postgres real (commit `7a3a951`, run 29709877372) corrió
+los 15 tests de integración nuevos de verdad y encontró un bug real: `fn_list_activities`
+(`db/03_stored_procedures_and_functions.sql`) nunca se actualizó para devolver
+`meeting_url`/`meeting_provider`, y `ActivityService.ListAsync` reventaba con
+`IndexOutOfRangeException: Field not found in row: meeting_url` al listar
+actividades — habría roto el endpoint de listado en producción. Corregido en
+`db/06_stored_procedures_attachments_and_meeting.sql` (commit `4af7a67`):
+redefinición de `fn_list_activities` agregando ambas columnas al `RETURNS TABLE`
+y al `SELECT`. Re-run de `Backend CI` (run 29710116351, commit `4af7a67`):
+**success**, paso "Ejecutar pruebas" en verde — el mismo test que había fallado
+(`Actividad_sin_campos_de_reunion_sigue_funcionando_en_list_get_y_patch`) ahora
+pasa contra Postgres real. `Flutter CI` en verde desde el commit `7a3a951`.
+Ruta de almacenamiento en el servidor de producción (IIS/Windows) confirmada
+ejecutada por el Lead — ver `docs/despliegue-adjuntos-produccion.md`.
 
 ## SPEC-003 — Link de reunion (Meet/Teams) en actividades — Punto 8 (implementada por CAPTAIN AMERICA, revisada por SPIDER-MAN/BLACK PANTHER/DAREDEVIL/WOLVERINE, verificada por HAWKEYE 2026-07-20)
 
@@ -188,9 +196,13 @@ los tests de integracion usan `[SkippableFact]` y se saltan (no fallan).
       (664729d/614ff77/f8e237c), el diff conjunto ya confirma cero cambios en
       la logica del calendario.
 
-**Qué falta para verificar al 100% en CI real**: igual que SPEC-002, correr
-`dotnet test` contra el Postgres real de `backend-ci.yml` para que los 6
-tests de integracion de `ActivityServiceMeetingTests` corran de verdad
-(hoy solo se saltan aqui por falta de BD). CA4/CA5 (abrir navegador externo /
-share sheet del SO) tampoco son verificables con un widget test headless —
-solo con un dispositivo/emulador real o una prueba manual.
+**Verificado en CI real (2026-07-20, post-implementación):** mismo run que
+SPEC-002 — los 6 tests de `ActivityServiceMeetingTests` corrieron contra
+Postgres real. Uno falló por el mismo bug de `fn_list_activities` (ver nota de
+SPEC-002 arriba, el test de CA7 usa `ListAsync`); corregido en el commit
+`4af7a67`, re-run en verde (run 29710116351). `Flutter CI` en verde. Queda como
+limitación documentada, no bloqueante para IMPLEMENTADA: CA4/CA5 (abrir
+navegador externo / share sheet del SO) siguen sin verificación automatizada
+end-to-end en dispositivo real — solo por lectura de código y presencia de los
+botones en widget test. Recomendado hacer una prueba manual puntual en un
+dispositivo Android real antes de anunciar la función a usuarios finales.

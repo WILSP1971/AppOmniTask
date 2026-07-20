@@ -4,8 +4,8 @@
     "PROPUESTA": 0,
     "APROBADA": 1,
     "RECHAZADA": 0,
-    "IMPLEMENTADA": 0,
-    "EN_VERIFICACION": 2
+    "IMPLEMENTADA": 2,
+    "EN_VERIFICACION": 0
   },
   "specs": [
     {
@@ -21,26 +21,28 @@
     {
       "id": "SPEC-002",
       "titulo": "Adjuntos en actividades (documentos e imagenes) — Punto 7",
-      "estado": "EN_VERIFICACION",
+      "estado": "IMPLEMENTADA",
       "archivo": ".swarm/specs/SPEC-002.md",
       "creada": "2026-07-20",
       "aprobada": "2026-07-20",
+      "implementada": "2026-07-20",
       "autor": "DOCTOR STRANGE",
       "responsable": "CAPTAIN AMERICA",
       "aprobador": "Lead humano",
-      "nota": "HAWKEYE (2026-07-20): tests escritos y ejecutados, ver .swarm/CHECKPOINTS.md. Todo lo ejecutable en este sandbox pasa en verde (flutter analyze 0 issues, flutter test 51/51, dotnet test backend 81 total/49 passed/0 failed). NO se marca IMPLEMENTADA porque 9 tests de integracion nuevos (AttachmentServiceTests: CA2-CA8) requieren Postgres real y este sandbox no tiene Postgres ni Docker — quedan como [SkippableFact] correctamente saltados, no fallados. Falta que backend-ci.yml los corra contra el service container de Postgres 16 ya configurado para confirmar CA2-CA8 de punta a punta. El caso limite de RequestSizeLimit/Kestrel (CA5) solo se verifico por reflexion estatica del atributo, no con un POST HTTP real de >11MB (no hay WebApplicationFactory/TestServer en el proyecto)."
+      "nota": "Backend CI en verde contra Postgres real (run 29710116351, commit 4af7a67) tras corregir un bug real encontrado por el primer run contra Postgres (fn_list_activities no devolvia meeting_url/meeting_provider, rompia el listado de actividades). Flutter CI en verde. Ruta de almacenamiento en el servidor de produccion (IIS/Windows) confirmada ejecutada por el Lead — ver docs/despliegue-adjuntos-produccion.md. Detalle completo en .swarm/CHECKPOINTS.md."
     },
     {
       "id": "SPEC-003",
       "titulo": "Link de reunion (Meet/Teams) en actividades — Punto 8",
-      "estado": "EN_VERIFICACION",
+      "estado": "IMPLEMENTADA",
       "archivo": ".swarm/specs/SPEC-003.md",
       "creada": "2026-07-20",
       "aprobada": "2026-07-20",
+      "implementada": "2026-07-20",
       "autor": "DOCTOR STRANGE",
       "responsable": "CAPTAIN AMERICA",
       "aprobador": "Lead humano",
-      "nota": "HAWKEYE (2026-07-20): tests escritos y ejecutados, ver .swarm/CHECKPOINTS.md. Todo lo ejecutable en este sandbox pasa en verde (flutter analyze 0 issues, flutter test 51/51, dotnet test backend 81 total/49 passed/0 failed). NO se marca IMPLEMENTADA porque 6 tests de integracion nuevos (ActivityServiceMeetingTests: CA1/CA2/CA7) requieren Postgres real, no disponible en este sandbox — quedan como [SkippableFact] correctamente saltados. Ademas CA4 (abrir navegador externo) y CA5 (share sheet del SO) solo se verificaron por lectura de codigo, no con un dispositivo/emulador real. Falta CI con Postgres real + una verificacion manual/E2E de CA4-CA5 en un dispositivo."
+      "nota": "Backend CI y Flutter CI en verde (mismo fix que SPEC-002, commit 4af7a67). Limitacion documentada no bloqueante: CA4/CA5 (abrir navegador externo / share sheet del SO) solo verificados por lectura de codigo y presencia de UI, no con un dispositivo real — recomendado hacer una prueba manual puntual antes de anunciar la funcion a usuarios finales. Detalle completo en .swarm/CHECKPOINTS.md."
     }
   ]
 }
