@@ -124,7 +124,8 @@ class AttachmentsSection extends ConsumerWidget {
   }
 
   Future<void> _pickPdf(BuildContext context, AttachmentActionsController controller) async {
-    final result = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['pdf'], withData: true);
+    final result = await FilePicker.platform
+        .pickFiles(type: FileType.custom, allowedExtensions: ['pdf'], withData: true);
     final file = result?.files.single;
     if (file == null || file.bytes == null) return;
     if (!context.mounted) return;

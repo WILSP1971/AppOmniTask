@@ -46,8 +46,20 @@ dependencies:
 
   # Adjuntos en actividades (SPEC-002 §3 RF6): selector de imagen/cámara y
   # de documentos PDF, apertura con el visor del sistema.
+  #
+  # file_picker fijado en 10.3.11 (no ^11.0.2): a partir de 11.x, el
+  # build.gradle del plugin detecta AGP>=9 y deja de aplicar el plugin
+  # `org.jetbrains.kotlin.android` (asumiendo "Built-in Kotlin" de AGP 9,
+  # que Flutter 3.44.6 aún no soporta para este plugin). Eso deja sus
+  # fuentes .kt sin compilar y GeneratedPluginRegistrant.java falla con
+  # "cannot find symbol: class FilePickerPlugin" SOLO en `flutter build
+  # apk --release` (analyze/test no compilan el árbol Gradle nativo, por
+  # eso no se detectó en CI hasta el release real). 10.3.11 siempre aplica
+  # el plugin Kotlin sin esa detección condicional — build de release
+  # confirmado exitoso localmente con esta versión (10.3.11 está retirada
+  # por el autor en pub.dev, de ahí 10.3.10).
   image_picker: ^1.2.3
-  file_picker: ^11.0.2
+  file_picker: 10.3.10
   open_filex: ^4.7.0
 
   # Link de reunión (SPEC-003 §3 RF5/RF6): abrir en navegador/app externa y
