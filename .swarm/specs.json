@@ -1,7 +1,7 @@
 {
-  "next_id": 5,
+  "next_id": 8,
   "counters": {
-    "PROPUESTA": 0,
+    "PROPUESTA": 3,
     "APROBADA": 1,
     "RECHAZADA": 0,
     "IMPLEMENTADA": 3,
@@ -56,6 +56,33 @@
       "responsable": "CAPTAIN AMERICA",
       "aprobador": "Lead humano",
       "nota": "Infraestructura de Firebase (flutterfire configure contra el proyecto omnitask-agenda, el mismo del backend, confirmado por el Lead) ya implementada en commits previos (86c36e0, fb7f840). Esta SPEC agrega la UX: permiso de notificaciones tras login/registro/restauración de sesión, empty-state + botón de activación en Dispositivos, botón de menú en AgendaHeader, y sección 'Pendientes por programar' en el Home. flutter analyze 0 issues, flutter test 49/49, flutter build apk --release compila y firma con el keystore existente. Limitacion documentada no bloqueante: sin dispositivo/emulador real en este entorno, la entrega efectiva de una notificación push queda pendiente de verificación manual del Lead. Detalle completo en .swarm/CHECKPOINTS.md."
+    },
+    {
+      "id": "SPEC-005",
+      "titulo": "Color por dia, iconos de tipo, azul steel y rediseno del Login",
+      "estado": "PROPUESTA",
+      "archivo": ".swarm/specs/SPEC-005.md",
+      "creada": "2026-07-21",
+      "autor": "DOCTOR STRANGE",
+      "responsable": "CAPTAIN AMERICA"
+    },
+    {
+      "id": "SPEC-006",
+      "titulo": "Tipo de actividad Cumpleanos",
+      "estado": "PROPUESTA",
+      "archivo": ".swarm/specs/SPEC-006.md",
+      "creada": "2026-07-21",
+      "autor": "DOCTOR STRANGE",
+      "responsable": "CAPTAIN AMERICA"
+    },
+    {
+      "id": "SPEC-007",
+      "titulo": "Limpiar historial de notificaciones",
+      "estado": "PROPUESTA",
+      "archivo": ".swarm/specs/SPEC-007.md",
+      "creada": "2026-07-21",
+      "autor": "DOCTOR STRANGE",
+      "responsable": "CAPTAIN AMERICA"
     }
   ]
 }
