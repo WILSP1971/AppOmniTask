@@ -1,8 +1,8 @@
 {
   "next_id": 8,
   "counters": {
-    "PROPUESTA": 3,
-    "APROBADA": 1,
+    "PROPUESTA": 0,
+    "APROBADA": 4,
     "RECHAZADA": 0,
     "IMPLEMENTADA": 3,
     "EN_VERIFICACION": 0
@@ -60,7 +60,9 @@
     {
       "id": "SPEC-005",
       "titulo": "Color por dia, iconos de tipo, azul steel y rediseno del Login",
-      "estado": "PROPUESTA",
+      "estado": "APROBADA",
+      "aprobada": "2026-07-21",
+      "aprobador": "Lead humano",
       "archivo": ".swarm/specs/SPEC-005.md",
       "creada": "2026-07-21",
       "autor": "DOCTOR STRANGE",
@@ -69,7 +71,9 @@
     {
       "id": "SPEC-006",
       "titulo": "Tipo de actividad Cumpleanos",
-      "estado": "PROPUESTA",
+      "estado": "APROBADA",
+      "aprobada": "2026-07-21",
+      "aprobador": "Lead humano",
       "archivo": ".swarm/specs/SPEC-006.md",
       "creada": "2026-07-21",
       "autor": "DOCTOR STRANGE",
@@ -78,7 +82,9 @@
     {
       "id": "SPEC-007",
       "titulo": "Limpiar historial de notificaciones",
-      "estado": "PROPUESTA",
+      "estado": "APROBADA",
+      "aprobada": "2026-07-21",
+      "aprobador": "Lead humano",
       "archivo": ".swarm/specs/SPEC-007.md",
       "creada": "2026-07-21",
       "autor": "DOCTOR STRANGE",
