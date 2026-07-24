@@ -1,8 +1,10 @@
 using Npgsql;
+using NpgsqlTypes;
 using OmniTask.Application;
 using OmniTask.Application.Dtos;
 using OmniTask.Application.Interfaces;
 using OmniTask.Domain;
+using System.Text.Json;
 
 namespace OmniTask.Infrastructure.Services;
 
@@ -16,10 +18,15 @@ public class ActivityService : SqlServiceBase, IActivityService
     {
         ValidateMeeting(request.MeetingUrl, request.MeetingProvider);
 
+        // SPEC-008 (RF10/RF12): une ContactIds (contrato nuevo) con ContactId
+        // (legado, app vieja que solo manda un contacto) en un solo array
+        // de-duplicado; si no llega ninguno de los dos, se pasa un array vacío.
+        var contactIds = MergeContactIds(request.ContactId, request.ContactIds);
+
         await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT * FROM fn_create_activity(@user_id, @contact_id, @type, @title, @description, @starts_at, @ends_at, @location, @meeting_url, @meeting_provider)";
+        cmd.CommandText = "SELECT * FROM fn_create_activity(@user_id, @contact_ids, @type, @title, @description, @starts_at, @ends_at, @location, @meeting_url, @meeting_provider)";
         cmd.Parameters.AddWithValue("user_id", userId);
-        cmd.Parameters.AddWithValue("contact_id", (object?)request.ContactId ?? DBNull.Value);
+        cmd.Parameters.Add(new NpgsqlParameter("contact_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = contactIds });
         cmd.Parameters.Add(EnumParam("type", "activity_type", EnumParsing.Parse<ActivityType>(request.Type, "type")));
         cmd.Parameters.AddWithValue("title", request.Title);
         cmd.Parameters.AddWithValue("description", (object?)request.Description ?? DBNull.Value);
@@ -29,9 +36,18 @@ public class ActivityService : SqlServiceBase, IActivityService
         cmd.Parameters.AddWithValue("meeting_url", (object?)request.MeetingUrl ?? DBNull.Value);
         cmd.Parameters.AddWithValue("meeting_provider", (object?)request.MeetingProvider ?? DBNull.Value);
 
-        await using var reader = await cmd.ExecuteReaderAsync();
-        await reader.ReadAsync();
-        return MapActivity(reader);
+        ActivityResponse activity;
+        await using (var reader = await cmd.ExecuteReaderAsync())
+        {
+            await reader.ReadAsync();
+            activity = MapActivity(reader);
+        }
+
+        // fn_create_activity (RF4) sigue siendo SETOF activities puro (sin la
+        // columna "contacts", que solo agregan las funciones de lectura del
+        // RF6): se completa la lista de contactos con una segunda consulta
+        // para que la respuesta cumpla CA1 (contacts con todos los asociados).
+        return await LoadContactsAsync(conn, userId, activity);
     });
 
     public Task<PagedResponse<ActivityResponse>> ListAsync(
@@ -111,12 +127,19 @@ public class ActivityService : SqlServiceBase, IActivityService
         {
             ValidateMeeting(request.MeetingUrl, request.MeetingProvider);
 
+            // SPEC-008 (RF5/RF10): ContactIds null = no tocar los contactos
+            // (p_sync_contacts = false); una lista, incluso vacía, reemplaza
+            // el conjunto completo (p_sync_contacts = true).
+            var syncContacts = request.ContactIds is not null;
+            var contactIds = request.ContactIds?.Distinct().ToArray() ?? Array.Empty<Guid>();
+
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
                 SELECT * FROM fn_update_activity(
                     @user_id, @id, @title, @description,
                     @starts_at, @clear_starts_at, @ends_at, @clear_ends_at,
-                    @status, @location, @meeting_url, @meeting_provider)";
+                    @status, @location, @meeting_url, @meeting_provider,
+                    @contact_ids, @sync_contacts)";
             cmd.Parameters.AddWithValue("user_id", userId);
             cmd.Parameters.AddWithValue("id", activityId);
             cmd.Parameters.AddWithValue("title", (object?)request.Title ?? DBNull.Value);
@@ -129,16 +152,36 @@ public class ActivityService : SqlServiceBase, IActivityService
             cmd.Parameters.AddWithValue("location", (object?)request.Location ?? DBNull.Value);
             cmd.Parameters.AddWithValue("meeting_url", (object?)request.MeetingUrl ?? DBNull.Value);
             cmd.Parameters.AddWithValue("meeting_provider", (object?)request.MeetingProvider ?? DBNull.Value);
+            cmd.Parameters.Add(new NpgsqlParameter("contact_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid) { Value = contactIds });
+            cmd.Parameters.AddWithValue("sync_contacts", syncContacts);
 
-            await using var reader = await cmd.ExecuteReaderAsync();
-            await reader.ReadAsync();
-            return MapActivity(reader);
+            ActivityResponse activity;
+            await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                await reader.ReadAsync();
+                activity = MapActivity(reader);
+            }
+
+            // Igual que en CreateAsync: fn_update_activity (RF5) es SETOF
+            // activities puro, se completa "contacts" con una segunda consulta
+            // para reflejar el conjunto ya sincronizado (CA2).
+            return await LoadContactsAsync(conn, userId, activity);
         });
 
     public Task CancelAsync(Guid userId, Guid activityId) =>
         // Soft delete: mismo contrato que DELETE /activities/{id} en la §6.
         UpdateAsync(userId, activityId, new ActivityUpdateRequest(
             null, null, null, false, null, false, "cancelled", null));
+
+    // SPEC-008 (RF10/RF12): une ContactId (legado, un solo id) con ContactIds
+    // (nuevo, 0..N ids) en un solo array de-duplicado; nulos se descartan.
+    private static Guid[] MergeContactIds(Guid? legacyContactId, List<Guid>? contactIds)
+    {
+        var merged = new List<Guid>();
+        if (legacyContactId is Guid legacy) merged.Add(legacy);
+        if (contactIds is not null) merged.AddRange(contactIds);
+        return merged.Distinct().ToArray();
+    }
 
     // SPEC-003 (§5): defensa en profundidad — el cliente ya valida, pero el
     // servidor nunca confía solo en él. Solo valida cuando el campo viene con
@@ -154,11 +197,16 @@ public class ActivityService : SqlServiceBase, IActivityService
 
     private static ActivityResponse MapActivity(NpgsqlDataReader reader)
     {
-        var contactIdOrdinal = reader.GetOrdinal("contact_id");
+        // SPEC-008 (RF10): los contactos ahora salen de la columna agregada
+        // "contacts" JSONB (fuente de verdad: activity_contacts); contact_id
+        // legado se deriva del primer contacto de la lista, no de la columna
+        // activities.contact_id (deprecada, RF3), para reflejar siempre el
+        // estado real de la tabla puente.
+        var contacts = ParseContacts(reader);
         return new ActivityResponse(
             reader.GetGuid(reader.GetOrdinal("id")),
             reader.GetGuid(reader.GetOrdinal("user_id")),
-            reader.IsDBNull(contactIdOrdinal) ? null : reader.GetGuid(contactIdOrdinal),
+            contacts.Count > 0 ? contacts[0].Id : null,
             reader.GetFieldValue<ActivityType>(reader.GetOrdinal("type")).ToString().ToLowerInvariant(),
             reader.GetString(reader.GetOrdinal("title")),
             reader.IsDBNull(reader.GetOrdinal("description")) ? null : reader.GetString(reader.GetOrdinal("description")),
@@ -170,7 +218,61 @@ public class ActivityService : SqlServiceBase, IActivityService
             reader.GetFieldValue<DateTimeOffset>(reader.GetOrdinal("created_at")),
             reader.GetFieldValue<DateTimeOffset>(reader.GetOrdinal("updated_at")),
             GetNullableString(reader, "meeting_url"),
-            GetNullableString(reader, "meeting_provider"));
+            GetNullableString(reader, "meeting_provider"),
+            Contacts: contacts);
+    }
+
+    // fn_get_activity_by_id (RF6) ya trae "contacts" completo; se reusa aquí
+    // para completar la respuesta de create/update sin duplicar el jsonb_agg
+    // en SQL. userId se pasa explícito (no confiar en scoping implícito) para
+    // mantener el mismo filtro de propiedad que el resto del servicio.
+    private static async Task<ActivityResponse> LoadContactsAsync(NpgsqlConnection conn, Guid userId, ActivityResponse activity)
+    {
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT contacts FROM fn_get_activity_by_id(@user_id, @id)";
+        cmd.Parameters.AddWithValue("user_id", userId);
+        cmd.Parameters.AddWithValue("id", activity.Id);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (!await reader.ReadAsync()) return activity;
+
+        var contacts = ParseContacts(reader);
+        return activity with { Contacts = contacts, ContactId = contacts.Count > 0 ? contacts[0].Id : null };
+    }
+
+    // Lee la columna agregada "contacts" JSONB ({id, full_name, phone_e164}[])
+    // que devuelven fn_get_activity_by_id/fn_list_activities/
+    // fn_list_unscheduled_activities (RF6); notes no viaja en el agregado SQL
+    // (no se pidió por la SPEC), así que ContactResponse.Notes queda null.
+    // fn_create_activity/fn_update_activity (RF4/RF5) siguen siendo SETOF
+    // activities puro -- no traen la columna "contacts" -- así que aquí se
+    // devuelve lista vacía y CreateAsync/UpdateAsync la completan aparte
+    // (ver llamada a fn_get_activity_by_id tras crear/actualizar).
+    private static List<ContactResponse> ParseContacts(NpgsqlDataReader reader)
+    {
+        int ordinal;
+        try
+        {
+            ordinal = reader.GetOrdinal("contacts");
+        }
+        catch (IndexOutOfRangeException)
+        {
+            return new List<ContactResponse>();
+        }
+        if (reader.IsDBNull(ordinal)) return new List<ContactResponse>();
+
+        var json = reader.GetString(ordinal);
+        var items = JsonSerializer.Deserialize<List<JsonElement>>(json) ?? new List<JsonElement>();
+
+        var result = new List<ContactResponse>();
+        foreach (var item in items)
+        {
+            var id = item.GetProperty("id").GetGuid();
+            var fullName = item.GetProperty("full_name").GetString() ?? string.Empty;
+            var phoneE164 = item.TryGetProperty("phone_e164", out var phoneEl) ? phoneEl.GetString() : null;
+            result.Add(new ContactResponse(id, fullName, phoneE164 ?? string.Empty, null));
+        }
+        return result;
     }
 
     private static string? GetNullableString(NpgsqlDataReader reader, string column)

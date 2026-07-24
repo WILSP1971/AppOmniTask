@@ -65,16 +65,25 @@ class _ActivitiesByDateScreenState
           ),
           Expanded(
             child: activitiesAsync.when(
-              data: (activities) => activities.isEmpty
-                  ? const Center(
-                      child: Text('No hay actividades programadas ese día'))
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      itemCount: activities.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
-                      itemBuilder: (context, i) =>
-                          _ActivityTile(activity: activities[i]),
-                    ),
+              data: (activities) {
+                // SPEC-010 RF1: mismo color de día que "Mis citas"
+                // (SPEC-005) — misma función y mismo fallback, calculado una
+                // sola vez ya que todas las tarjetas son del día consultado.
+                final dayColor = colorForDay(
+                    activities, Theme.of(context).colorScheme.primary);
+                return activities.isEmpty
+                    ? const Center(
+                        child: Text('No hay actividades programadas ese día'))
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        itemCount: activities.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, i) => _ActivityTile(
+                          activity: activities[i],
+                          dayColor: dayColor,
+                        ),
+                      );
+              },
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(
                 child: Column(
@@ -101,8 +110,9 @@ String _capitalize(String text) =>
     text.isEmpty ? text : text[0].toUpperCase() + text.substring(1);
 
 class _ActivityTile extends StatelessWidget {
-  const _ActivityTile({required this.activity});
+  const _ActivityTile({required this.activity, required this.dayColor});
   final Activity activity;
+  final Color dayColor;
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +131,7 @@ class _ActivityTile extends StatelessWidget {
           width: 4,
           height: 36,
           decoration: BoxDecoration(
-            color: colorForActivityType(activity.type),
+            color: dayColor,
             borderRadius: BorderRadius.circular(2),
           ),
         ),

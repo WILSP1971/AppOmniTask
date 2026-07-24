@@ -44,15 +44,19 @@ public class ReminderDispatchJob
             Hangfire.BackgroundJob.Enqueue<ReminderDispatchJob>(job => job.SendReminderAsync(reminderId));
     }
 
+    // SPEC-008 (RF7/RF11): fn_get_reminder_dispatch_info ahora es SETOF, una
+    // fila por contacto de la actividad (LEFT JOIN); una actividad sin
+    // contactos devuelve una única fila con contact_* en NULL. Se representa
+    // aquí como un registro liviano por fila para poder recorrerlas todas.
+    private sealed record DispatchRow(
+        ReminderChannel Channel, Guid ActivityId, string ActivityTitle, DateTimeOffset? ActivityStartsAt,
+        Guid UserId, Guid? ContactId, string? ContactFullName, string? ContactPhoneE164);
+
     public async Task SendReminderAsync(Guid reminderId)
     {
         await using var conn = await _dataSource.OpenConnectionAsync();
 
-        Guid activityId, userId;
-        Guid? contactId;
-        string activityTitle, contactFullName = "", contactPhoneE164 = "";
-        DateTimeOffset? activityStartsAt;
-        ReminderChannel channel;
+        var rows = new List<DispatchRow>();
 
         await using (var cmd = conn.CreateCommand())
         {
@@ -60,45 +64,81 @@ public class ReminderDispatchJob
             cmd.Parameters.AddWithValue("id", reminderId);
 
             await using var reader = await cmd.ExecuteReaderAsync();
-            await reader.ReadAsync();
-
-            channel = reader.GetFieldValue<ReminderChannel>(reader.GetOrdinal("channel"));
-            activityId = reader.GetGuid(reader.GetOrdinal("activity_id"));
-            activityTitle = reader.GetString(reader.GetOrdinal("activity_title"));
-            var startsAtOrdinal = reader.GetOrdinal("activity_starts_at");
-            activityStartsAt = reader.IsDBNull(startsAtOrdinal) ? null : reader.GetFieldValue<DateTimeOffset>(startsAtOrdinal);
-            userId = reader.GetGuid(reader.GetOrdinal("user_id"));
-
-            var contactIdOrdinal = reader.GetOrdinal("contact_id");
-            contactId = reader.IsDBNull(contactIdOrdinal) ? null : reader.GetGuid(contactIdOrdinal);
-            if (contactId is not null)
+            while (await reader.ReadAsync())
             {
-                contactFullName = reader.GetString(reader.GetOrdinal("contact_full_name"));
-                contactPhoneE164 = reader.GetString(reader.GetOrdinal("contact_phone_e164"));
+                var contactIdOrdinal = reader.GetOrdinal("contact_id");
+                var contactId = reader.IsDBNull(contactIdOrdinal) ? (Guid?)null : reader.GetGuid(contactIdOrdinal);
+
+                var startsAtOrdinal = reader.GetOrdinal("activity_starts_at");
+
+                rows.Add(new DispatchRow(
+                    reader.GetFieldValue<ReminderChannel>(reader.GetOrdinal("channel")),
+                    reader.GetGuid(reader.GetOrdinal("activity_id")),
+                    reader.GetString(reader.GetOrdinal("activity_title")),
+                    reader.IsDBNull(startsAtOrdinal) ? null : reader.GetFieldValue<DateTimeOffset>(startsAtOrdinal),
+                    reader.GetGuid(reader.GetOrdinal("user_id")),
+                    contactId,
+                    contactId is null ? null : reader.GetString(reader.GetOrdinal("contact_full_name")),
+                    contactId is null ? null : reader.GetString(reader.GetOrdinal("contact_phone_e164"))));
             }
         }
 
+        // Datos comunes a todas las filas (misma actividad/reminder): se toman
+        // de la primera fila, que siempre existe (LEFT JOIN nunca da 0 filas).
+        var first = rows[0];
+
         try
         {
-            if (channel is ReminderChannel.Push or ReminderChannel.Both)
-                await SendPushAsync(conn, userId, activityId, activityTitle, activityStartsAt);
+            // El push al dueño se envía una sola vez por reminder (RNF5), no
+            // una por contacto — se ejecuta fuera del bucle de contactos.
+            if (first.Channel is ReminderChannel.Push or ReminderChannel.Both)
+                await SendPushAsync(conn, first.UserId, first.ActivityId, first.ActivityTitle, first.ActivityStartsAt);
 
-            if (channel is ReminderChannel.Whatsapp or ReminderChannel.Both && contactId is not null)
+            // RF11: corrige el bug de precedencia de la condición original
+            // (`channel is ReminderChannel.Whatsapp or ReminderChannel.Both &&
+            // contactId is not null`) — `&&` liga más fuerte que `or`, así que
+            // Postgres/C# evaluaba `Whatsapp OR (Both && contactId is not
+            // null)`, lo que enviaba WhatsApp igual sin contacto cuando el
+            // canal era `Whatsapp`. Con paréntesis explícitos alrededor de la
+            // disyunción de canal, la condición evalúa lo esperado: "el canal
+            // incluye WhatsApp Y hay un contacto para esta fila".
+            if ((first.Channel is ReminderChannel.Whatsapp or ReminderChannel.Both))
             {
-                var wamid = await _whatsAppClient.SendTemplateMessageAsync(
-                    contactPhoneE164,
-                    "appointment_reminder",
-                    "es_CO",
-                    new[]
-                    {
-                        contactFullName,
-                        activityStartsAt!.Value.ToString("d MMM"),
-                        activityStartsAt!.Value.ToString("h:mm tt"),
-                    });
+                foreach (var row in rows)
+                {
+                    if (row.ContactId is null || string.IsNullOrWhiteSpace(row.ContactPhoneE164))
+                        continue;
 
-                await LogNotificationAsync(
-                    conn, reminderId, userId, NotificationChannel.Whatsapp, NotificationStatus.Sent,
-                    $"Recordatorio de WhatsApp: {activityTitle}", wamid);
+                    try
+                    {
+                        var wamid = await _whatsAppClient.SendTemplateMessageAsync(
+                            row.ContactPhoneE164,
+                            "appointment_reminder",
+                            "es_CO",
+                            new[]
+                            {
+                                row.ContactFullName ?? string.Empty,
+                                row.ActivityStartsAt!.Value.ToString("d MMM"),
+                                row.ActivityStartsAt!.Value.ToString("h:mm tt"),
+                            });
+
+                        await LogNotificationAsync(
+                            conn, reminderId, first.UserId, NotificationChannel.Whatsapp, NotificationStatus.Sent,
+                            $"Recordatorio de WhatsApp: {first.ActivityTitle}", wamid);
+                    }
+                    catch (Exception)
+                    {
+                        // Un destinatario inválido no debe impedir el envío a
+                        // los demás contactos de la misma actividad (RF11,
+                        // §5): se registra su notification_log como fallido y
+                        // se continúa el bucle, sin relanzar — el reminder
+                        // solo se marca failed por una excepción que amerite
+                        // reintento de Hangfire (fuera de este bucle).
+                        await LogNotificationAsync(
+                            conn, reminderId, first.UserId, NotificationChannel.Whatsapp, NotificationStatus.Failed,
+                            $"Recordatorio de WhatsApp: {first.ActivityTitle}", null);
+                    }
+                }
             }
 
             await using (var cmd = conn.CreateCommand())

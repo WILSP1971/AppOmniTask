@@ -39,6 +39,10 @@ public record ActivityCreateRequest(
     string Type,
     string Title,
     string? Description,
+    // SPEC-008 (RF9/RF12): ContactId se conserva por compatibilidad legada
+    // (app vieja que solo conoce un contacto); ContactIds es el contrato
+    // nuevo (0, 1 o N contactos). Si llegan ambos, ActivityService los une
+    // y de-duplica (RF12).
     Guid? ContactId,
     DateTimeOffset? StartsAt,
     DateTimeOffset? EndsAt,
@@ -46,7 +50,8 @@ public record ActivityCreateRequest(
     // SPEC-003 (§6, §3 RF1): link de reunión pegado manualmente; ambos nulos
     // si la actividad no tiene reunión.
     string? MeetingUrl = null,
-    string? MeetingProvider = null);
+    string? MeetingProvider = null,
+    List<Guid>? ContactIds = null);
 
 // ClearStartsAt/ClearEndsAt existen porque un valor null en StartsAt/EndsAt es
 // ambiguo por sí solo ("no lo toques" vs. "bórralo") — con el flag explícito,
@@ -65,13 +70,20 @@ public record ActivityUpdateRequest(
     // Title/Description/Location — no hay flag de "limpiar" porque no fue
     // pedido por la SPEC.
     string? MeetingUrl = null,
-    string? MeetingProvider = null);
+    string? MeetingProvider = null,
+    // SPEC-008 (RF9): null = no tocar los contactos; una lista, incluso
+    // vacía, reemplaza el conjunto completo (traducido a p_contact_ids +
+    // p_sync_contacts = (ContactIds != null) en ActivityService, RF5/RF10).
+    List<Guid>? ContactIds = null);
 
 public record ReminderSummaryResponse(Guid Id, DateTimeOffset RemindAt, string Channel, string Status);
 
 public record ActivityResponse(
     Guid Id,
     Guid UserId,
+    // SPEC-008 (RF9/RF12): se conserva por compatibilidad (primer contacto de
+    // Contacts, o null) para que una app vieja instalada siga mostrando el
+    // único contacto que sabe leer.
     Guid? ContactId,
     string Type,
     string Title,
@@ -85,7 +97,10 @@ public record ActivityResponse(
     DateTimeOffset UpdatedAt,
     string? MeetingUrl = null,
     string? MeetingProvider = null,
-    List<ReminderSummaryResponse>? Reminders = null);
+    List<ReminderSummaryResponse>? Reminders = null,
+    // SPEC-008 (RF9): lista completa de contactos asociados (0..N), fuente
+    // de verdad nueva del contrato.
+    List<ContactResponse>? Contacts = null);
 
 // ---- Activity attachments (SPEC-002, §6) ----
 

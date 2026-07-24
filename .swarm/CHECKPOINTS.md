@@ -346,3 +346,72 @@ bien en pantalla) queda en manos del Lead tras instalar el release.
       actualizado para aplicar también `db/08_*.sql`.
 - [x] C-NR: `PATCH /{id}/ack` y `POST /ack-all` sin cambios de código ni de
       comportamiento — solo se agregó un método nuevo al lado.
+
+## SPEC-008 — Varios contactos por actividad y WhatsApp a todos (implementada por CAPTAIN AMERICA 2026-07-24)
+
+- [x] CA1/CA2: `db/09_activity_contacts.sql` agrega la tabla puente
+      `activity_contacts` y recrea `fn_create_activity`/`fn_update_activity`
+      con `p_contact_ids UUID[]` (+ `p_sync_contacts BOOLEAN` en update, para
+      distinguir "no tocar" de "reemplazar el conjunto"). Revisión del
+      orquestador encontró y corrigió un bug real antes de entregar el script:
+      faltaba `DROP FUNCTION IF EXISTS fn_get_activity_by_id(UUID, UUID)` —
+      Postgres rechaza `CREATE OR REPLACE FUNCTION` cuando cambia el tipo de
+      retorno (de `SETOF activities` a `RETURNS TABLE(...)`) sin ese DROP
+      explícito; sin el fix, el script se habría caído a mitad de camino en
+      cualquier entorno real.
+- [x] CA3: migración de datos (`INSERT ... SELECT ... ON CONFLICT DO
+      NOTHING`) idempotente; `activities.contact_id` se conserva (no se
+      borra) pero queda documentada como deprecada vía `COMMENT ON COLUMN`.
+- [x] CA4: `fn_get_activity_by_id`/`fn_list_activities`/
+      `fn_list_unscheduled_activities` devuelven la columna `contacts JSONB`
+      agregada; `ActivityService.MapActivity`/`ParseContacts` la leen sin
+      romper cuando la columna no existe (create/update, que siguen siendo
+      `SETOF activities` puro — se completa con `LoadContactsAsync`,
+      una segunda consulta a `fn_get_activity_by_id`).
+- [x] CA5: `fn_get_reminder_dispatch_info` pasa a `LEFT JOIN
+      activity_contacts`/`contacts` — una fila por contacto de la actividad,
+      una fila con `contact_*` en NULL si no hay ninguno.
+- [x] CA6: `ReminderDispatchJob.SendReminderAsync` recorre todas las filas:
+      un `notification_log` por contacto (con try/catch individual, un
+      destinatario inválido no cancela el envío a los demás), un solo push al
+      dueño fuera del bucle. De paso corrige un bug real de precedencia en la
+      condición original (`channel is Whatsapp or Both && contactId is not
+      null` se evaluaba como `Whatsapp or (Both && contactId is not null)`
+      por precedencia de operadores) con paréntesis explícitos.
+- [x] CA7 (compatibilidad, RF12): `ActivityCreateRequest`/`ActivityResponse`
+      conservan `ContactId` (legado) junto a `ContactIds`/`Contacts` (nuevo);
+      `MergeContactIds` une y de-duplica ambos en creación.
+- [x] CA8 (autorización, RNF2): la sincronización de `activity_contacts` en
+      SQL filtra `JOIN contacts c ON c.id = ids.contact_id AND c.user_id =
+      p_user_id` — un `contact_id` de otro usuario se ignora en silencio.
+- [x] CA9 (transversal): `dotnet build` 0 errores/0 warnings; `dotnet test`
+      49 passed/32 skipped (integración sin Postgres real en este entorno,
+      igual que en SPECs previas); `backend-ci.yml` aplica `db/09` contra
+      Postgres real del job de CI.
+- [x] C-NR: generación de reminders, resto de endpoints de `/activities`,
+      push al dueño y bandeja/limpieza de notificaciones (SPEC-007) sin
+      cambios de comportamiento más allá de los campos aditivos nuevos.
+
+**Limitación documentada, no bloqueante:** R5 de la SPEC — el envío real de
+WhatsApp a múltiples contactos requiere la config de Meta ya conocida en
+producción; no verificable en este sandbox. El bucle y el registro por
+contacto se validan por lectura de código + `dotnet build`/`dotnet test`.
+**Pendiente de acción del Lead:** aplicar `db/09_activity_contacts.sql` en el
+servidor de producción y republicar el backend actualizado (ver
+`docs/despliegue-spec-006-007-produccion.md` como referencia de formato;
+mismo procedimiento: psql + `dotnet publish` + reciclar el Application Pool)
+antes de que SPEC-009 (frontend) tenga un backend real contra el cual probar
+de punta a punta.
+
+## SPEC-010 — Color del día en "Actividades por fecha" (implementada por CAPTAIN AMERICA 2026-07-24)
+
+- [x] CA1/CA2: `activities_by_date_screen.dart` calcula `dayColor =
+      colorForDay(activities, Theme.of(context).colorScheme.primary)` una
+      sola vez por día consultado (misma función y mismo fallback que "Mis
+      citas", SPEC-005) y lo pasa a `_ActivityTile(dayColor: ...)`, que lo usa
+      en la barra lateral en vez de `colorForActivityType(activity.type)`.
+- [x] CA3 (transversal): `flutter analyze` → "No issues found!"; `flutter
+      test` → 49/49.
+- [x] C-NR: no se tocó `calendar_screen.dart`/`month_calendar.dart`/
+      `appointments_section.dart`/`appointment_card.dart` ni el ícono por
+      tipo; la navegación al detalle de la tarjeta no cambió.

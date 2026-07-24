@@ -1,10 +1,10 @@
 {
-  "next_id": 8,
+  "next_id": 11,
   "counters": {
     "PROPUESTA": 0,
-    "APROBADA": 1,
+    "APROBADA": 2,
     "RECHAZADA": 0,
-    "IMPLEMENTADA": 6,
+    "IMPLEMENTADA": 8,
     "EN_VERIFICACION": 0
   },
   "specs": [
@@ -95,6 +95,43 @@
       "autor": "DOCTOR STRANGE",
       "responsable": "CAPTAIN AMERICA",
       "nota": "db/08_clear_notifications.sql (sp_clear_notifications) + DELETE /api/v1/notifications + boton Limpiar historial con confirmacion explicita en notifications_inbox_screen.dart. backend-ci.yml actualizado para aplicar db/08 contra Postgres real del job. Detalle completo en .swarm/CHECKPOINTS.md."
+    },
+    {
+      "id": "SPEC-008",
+      "titulo": "Varios contactos por actividad y WhatsApp a todos (BD + Backend)",
+      "estado": "IMPLEMENTADA",
+      "creada": "2026-07-24",
+      "aprobada": "2026-07-24",
+      "implementada": "2026-07-24",
+      "aprobador": "Lead humano",
+      "archivo": ".swarm/specs/SPEC-008.md",
+      "autor": "DOCTOR STRANGE",
+      "responsable": "CAPTAIN AMERICA",
+      "nota": "db/09_activity_contacts.sql (tabla puente activity_contacts, migracion idempotente, columna contact_id deprecada via COMMENT, fn_create_activity/fn_update_activity con p_contact_ids UUID[] + p_sync_contacts, fn_get_activity_by_id/fn_list_activities/fn_list_unscheduled_activities con columna contacts JSONB, fn_get_reminder_dispatch_info SETOF por contacto). Corregido en revision: faltaba el DROP FUNCTION antes de fn_get_activity_by_id (cambia de SETOF activities a RETURNS TABLE, Postgres lo rechaza sin DROP). Backend: ContactIds/Contacts en los DTOs manteniendo ContactId legado (ventana de compatibilidad RF12), ActivityService.LoadContactsAsync completa la lista tras create/update, ReminderDispatchJob envia WhatsApp a todos los contactos con un notification_log por destinatario y un solo push al dueno, de paso corrige un bug real de precedencia (&& vs or) en la condicion de envio. dotnet build 0 errores/warnings, dotnet test 49 passed/32 skipped (integracion sin Postgres real en este entorno). backend-ci.yml aplica db/09 contra Postgres real del job. Limitacion no bloqueante: envio real de WhatsApp no verificable en el sandbox. Detalle completo en .swarm/CHECKPOINTS.md."
+    },
+    {
+      "id": "SPEC-009",
+      "titulo": "Frontend Flutter: seleccion multiple de contactos",
+      "estado": "APROBADA",
+      "creada": "2026-07-24",
+      "aprobada": "2026-07-24",
+      "aprobador": "Lead humano",
+      "archivo": ".swarm/specs/SPEC-009.md",
+      "autor": "DOCTOR STRANGE",
+      "responsable": "CAPTAIN AMERICA"
+    },
+    {
+      "id": "SPEC-010",
+      "titulo": "Color del dia en Actividades por fecha",
+      "estado": "IMPLEMENTADA",
+      "creada": "2026-07-24",
+      "aprobada": "2026-07-24",
+      "implementada": "2026-07-24",
+      "aprobador": "Lead humano",
+      "archivo": ".swarm/specs/SPEC-010.md",
+      "autor": "DOCTOR STRANGE",
+      "responsable": "CAPTAIN AMERICA",
+      "nota": "activities_by_date_screen.dart calcula dayColor una sola vez por dia consultado (colorForDay(), misma funcion/fallback que Mis citas SPEC-005) y lo pasa a _ActivityTile en vez de colorForActivityType(type). flutter analyze sin issues, flutter test 49/49. Detalle completo en .swarm/CHECKPOINTS.md."
     }
   ]
 }

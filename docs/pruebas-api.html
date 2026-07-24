@@ -349,7 +349,7 @@ const authHeaders = () => ({
         <span class="auth-badge">Requiere sesión</span>
       </summary>
       <div class="endpoint-body">
-        <p><code>type</code>: <code>meeting</code> / <code>appointment</code> / <code>task</code>. Omitir <code>starts_at</code> crea la actividad "sin programar". <code>meeting_url</code>/<code>meeting_provider</code> son opcionales (provider: <code>meet</code>, <code>teams</code> u <code>other</code>).</p>
+        <p><code>type</code>: <code>meeting</code> / <code>appointment</code> / <code>task</code>. Omitir <code>starts_at</code> crea la actividad "sin programar". <code>meeting_url</code>/<code>meeting_provider</code> son opcionales (provider: <code>meet</code>, <code>teams</code> u <code>other</code>). <code>contact_ids</code> (SPEC-008) acepta 0, 1 o varios contactos del usuario autenticado — un id que no exista o sea de otro usuario se ignora sin error; <code>contact_id</code> (un solo id) se conserva por compatibilidad con clientes viejos y, si llega junto con <code>contact_ids</code>, ambos se combinan. La respuesta trae tanto <code>contacts</code>/<code>contact_ids</code> como <code>contact_id</code> (el primero de la lista).</p>
         <div class="codewrap"><pre>fetch(`${API}/activities`, {
   method: "POST",
   headers: authHeaders(),
@@ -357,7 +357,7 @@ const authHeaders = () => ({
     type: "meeting",
     title: "Reunión de prueba",
     description: "Creada desde la guía de pruebas",
-    contact_id: null,
+    contact_ids: [],
     starts_at: new Date(Date.now() + 2 * 86400000).toISOString(),
     ends_at: new Date(Date.now() + 2 * 86400000 + 3600000).toISOString(),
     location: null,
