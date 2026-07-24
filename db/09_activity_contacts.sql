@@ -415,6 +415,35 @@ $$ LANGUAGE sql STABLE;
 
 
 -- ============================================================
+-- Fix (detectado por Backend CI contra Postgres real): sp_delete_contact
+-- seguía comprobando activities.contact_id (deprecada por RF3, ya no la
+-- escribe fn_create_activity/fn_update_activity) para bloquear el borrado de
+-- un contacto con actividades asociadas. Sin este fix, la protección de
+-- ContactServiceTests.DeleteAsync_con_actividades_asociadas_lanza_409 (409)
+-- dejaba de dispararse en silencio: se podía borrar cualquier contacto con
+-- actividades, y activity_contacts (ON DELETE CASCADE) perdía la asociación
+-- sin aviso. Pasa a comprobar activity_contacts, la fuente de verdad nueva.
+-- ============================================================
+
+CREATE OR REPLACE PROCEDURE sp_delete_contact(p_user_id UUID, p_contact_id UUID) AS $$
+DECLARE
+    v_activity_count INT;
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM contacts WHERE id = p_contact_id AND user_id = p_user_id) THEN
+        RAISE EXCEPTION 'Contacto no encontrado' USING ERRCODE = 'OT001';
+    END IF;
+
+    SELECT COUNT(*) INTO v_activity_count FROM activity_contacts WHERE contact_id = p_contact_id;
+    IF v_activity_count > 0 THEN
+        RAISE EXCEPTION 'Este contacto tiene actividades asociadas' USING ERRCODE = 'OT002';
+    END IF;
+
+    DELETE FROM contacts WHERE id = p_contact_id AND user_id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- ============================================================
 -- RF8 — GRANTs
 -- ============================================================
 --
