@@ -6,20 +6,27 @@ import 'appointment_card.dart';
 
 /// "Mis citas" (SPEC-001 §2) — y, con otro [title], la sección "Pendientes
 /// por programar" del Home (SPEC-004 RF4): mismo componente, misma tarjeta
-/// coloreada por tipo (`AppointmentCard` ya maneja `startsAt == null`
-/// mostrando "--" en el badge de fecha), sin nada nuevo que mantener.
+/// (`AppointmentCard` ya maneja `startsAt == null` mostrando "--" en el badge
+/// de fecha), sin nada nuevo que mantener.
 /// Título + botón "+ Agregar" (→ /activities/new) y la lista de tarjetas.
+///
+/// [dayColor] (SPEC-005 RF1): si se da, todas las tarjetas comparten ese color
+/// (el del día seleccionado en el calendario) en vez de derivarlo cada una de
+/// su propio tipo. "Pendientes por programar" no tiene día — se deja en null
+/// y cada tarjeta sigue coloreando por tipo como antes.
 class AppointmentsSection extends StatelessWidget {
   const AppointmentsSection({
     super.key,
     required this.activities,
     required this.emptyLabel,
     this.title = 'Mis citas',
+    this.dayColor,
   });
 
   final List<Activity> activities;
   final String emptyLabel;
   final String title;
+  final Color? dayColor;
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +68,7 @@ class AppointmentsSection extends StatelessWidget {
             itemCount: activities.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, index) =>
-                AppointmentCard(activity: activities[index]),
+                AppointmentCard(activity: activities[index], color: dayColor),
           ),
       ],
     );

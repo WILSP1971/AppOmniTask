@@ -27,6 +27,10 @@ class NotificationRepository {
 
   Future<void> acknowledge(String id) => _dio.patch('/notifications/$id/ack');
   Future<void> acknowledgeAll() => _dio.post('/notifications/ack-all');
+
+  /// SPEC-007: borra TODO el historial de notificaciones del usuario, sin
+  /// deshacer posible — la confirmación vive en la UI, no aquí.
+  Future<void> clearAll() => _dio.delete('/notifications');
 }
 
 final notificationRepositoryProvider = Provider<NotificationRepository>(

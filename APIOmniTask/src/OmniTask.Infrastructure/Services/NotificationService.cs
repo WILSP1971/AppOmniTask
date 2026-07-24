@@ -69,4 +69,12 @@ public class NotificationService : SqlServiceBase, INotificationService
         cmd.Parameters.AddWithValue("user_id", userId);
         await cmd.ExecuteNonQueryAsync();
     });
+
+    public Task ClearAllAsync(Guid userId) => RunAsync(async conn =>
+    {
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "CALL sp_clear_notifications(@user_id)";
+        cmd.Parameters.AddWithValue("user_id", userId);
+        await cmd.ExecuteNonQueryAsync();
+    });
 }

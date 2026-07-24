@@ -3686,6 +3686,36 @@ Un hallazgo real de esa etapa: `app-v1.0.10` quedó con el **build de release ro
 
 Página nueva, independiente de este documento (no es arquitectura, es una referencia operativa): los 26 endpoints reales que invoca `omnitask_app` — extraídos de los repositorios (`lib/features/*/data/*.dart`), no de esta documentación — agrupados por Auth/Actividades/Adjuntos/Contactos/Dispositivos/Notificaciones, cada uno con datos de ejemplo y un snippet `fetch()` listo para pegar en la consola del navegador (F12), más su equivalente en `curl`. Pensada para que el Lead pueda validar la API real sin instalar Postman ni nada aparte — subir un adjunto es la única excepción que necesita un selector de archivo real en vez de un `fetch` de una línea, y el propio snippet lo crea al vuelo.
 
+## §30 — SPEC-004: push end-to-end y actividades sin fecha visibles
+
+Firebase quedó configurado con `flutterfire configure` contra el proyecto real **`omnitask-agenda`** (el mismo que ya usaba `firebase-admin.json` del backend, confirmado explícitamente por el Lead tras descubrir que dos cuentas de Google distintas veían dos proyectos Firebase distintos — un desajuste que habría dejado el push apuntando a un proyecto equivocado sin ningún error visible). `lib/firebase_options.dart` se commitea (no es secreto, solo `android/app/google-services.json` se reconstruye en CI desde un secret base64); `main.dart` ya llama `Firebase.initializeApp(...)` de verdad, ya no está comentado.
+
+Con la infraestructura activa, esta SPEC agregó la UX que faltaba:
+
+- **Permiso de notificaciones**: `FirebaseMessaging.instance.requestPermission()` antes de pedir el token FCM, disparado en `device_registration_notifier.dart::registerCurrentDevice()`.
+- **Pantalla de Dispositivos ya no queda vacía sin salida**: `devices_screen.dart` agrega `_EmptyDevicesState` con un botón "Activar notificaciones en este dispositivo" cuando `myDevicesProvider` devuelve lista vacía.
+- **Botón de menú en el header del calendario**: `agenda_header.dart` es un `PreferredSizeWidget` a medida, no un `AppBar` real, así que Flutter nunca agregó solo el ícono ☰ — se agregó a mano llamando a `Scaffold.of(context).openDrawer()`.
+- **"Pendientes por programar" visible en el Home**: antes solo se llegaba a las actividades sin fecha desde el Drawer/Backlog; ahora `calendar_screen.dart` reutiliza `AppointmentsSection` (con otro `title`) para mostrarlas también debajo de "Mis citas", sin duplicar el componente.
+
+Detalle de criterios de aceptación y limitaciones (sin dispositivo real para confirmar la entrega efectiva de un push) en `.swarm/CHECKPOINTS.md`.
+
+## §31 — SPEC-005/006/007: color por día, tipo Cumpleaños y limpiar notificaciones
+
+Tercer lote de trabajo bajo el mismo flujo de `.swarm/` (SPEC-005/006/007, las tres `APROBADA` → implementadas en la misma sesión), a partir de un pedido directo del Lead con imágenes de referencia (`docs/contexto/agenda2.jpg`, `docs/context/LoginApp.jpeg`, `docs/context/LoginAppFondo.jpeg`).
+
+**SPEC-005 — color por día, íconos de tipo, azul steel, Login rediseñado** (100% frontend):
+
+- El color de las tarjetas de "Mis citas" ya no lo deriva cada tarjeta de su propio `activity.type` — ahora `CalendarScreen` calcula una sola vez el color del día seleccionado (`colorForDay()`, nueva función en `activity_colors.dart`) usando la MISMA lista (`byDay[selectedKey]`) que ya usa `MonthCalendar._dayAccent()` para el círculo del día, y lo pasa hacia abajo (`AppointmentsSection.dayColor` → `AppointmentCard.color`). Así un día con reunión + tarea siempre pinta el círculo del calendario y todas sus tarjetas del mismo color — antes solo coincidían por casualidad en días de un único tipo. La sección "Pendientes por programar" no tiene día, así que sigue coloreando por tipo (no se le pasa `dayColor`).
+- Como el color ahora representa el día y no el tipo, cada `AppointmentCard` agrega un ícono pequeño de tipo (`iconForActivityType()`) en la esquina inferior derecha: reunión = `Icons.groups`, tarea = `Icons.task_alt`, cita = `Icons.event`, cumpleaños = `Icons.cake`.
+- El azul `#4A6CF7` (primary del tema oscuro y color del tipo "reunión") pasa a Steel Blue `#4682B4` en los dos lugares (`app_theme.dart::_darkPrimary`, `activity_colors.dart::colorForActivityType('meeting')`) — un solo azul en toda la app.
+- `login_screen.dart` se rediseñó: fondo de manchas de color difuminadas (`LoginBackgroundPainter`, un `CustomPainter` con `MaskFilter.blur` pintado una sola vez, sin animación, para no gastar batería) con los acentos ya existentes de OmniTask, y una tarjeta centrada con avatar circular, campos con bordes de píldora y botón de acceso destacado — mismos validadores, mismo `authNotifierProvider`, mismo flujo de error que antes. `register_screen.dart` quedó fuera de alcance a propósito.
+
+**SPEC-006 — tipo de actividad "Cumpleaños"** (BD + backend + frontend): `db/07_activity_type_birthday.sql` agrega `'birthday'` al enum `activity_type` con `ALTER TYPE ... ADD VALUE` — en su propio script, porque Postgres no deja usar un valor de enum recién agregado en la misma transacción en la que se agrega. `ActivityType.Birthday` se agregó al enum de C# (`OmniTask.Domain/Enums.cs`); como `Program.cs` ya mapea el enum completo vía `NpgsqlDataSourceBuilder.MapEnum<ActivityType>`, no hizo falta tocar nada más del backend. En Flutter, `activity_edit_screen.dart` agrega "Cumpleaños" al dropdown de tipo.
+
+**SPEC-007 — limpiar historial de notificaciones**: hasta ahora solo existía "marcar todas como leídas", no un borrado real. `db/08_clear_notifications.sql` agrega `sp_clear_notifications(p_user_id)` (`DELETE FROM notification_log WHERE user_id = ...` — `reminder_id` tiene `ON DELETE SET NULL`, así que esto nunca toca `reminders` ni `activities`). Nuevo `DELETE /api/v1/notifications` en `NotificationsController` + `ClearAllAsync` en `NotificationService`. En `notifications_inbox_screen.dart`, un botón "Limpiar historial" junto a "Marcar todas" pide confirmación explícita antes de llamar al endpoint — es irreversible y no hay papelera, así que la única salvaguarda es esa confirmación.
+
+Verificación de las tres SPECs en esta sesión: `flutter analyze` sin issues, `flutter test` 49/49, `dotnet build` sin errores/warnings, `dotnet test` 49 passed (32 de integración se saltan sin Postgres real, igual que en corridas anteriores), `flutter build apk --release` compila y firma con el mismo keystore. `.github/workflows/backend-ci.yml` se actualizó para aplicar también `db/07_*.sql` y `db/08_*.sql` contra el Postgres real del job. Detalle completo de criterios de aceptación en `.swarm/CHECKPOINTS.md` y `.swarm/specs/SPEC-005.md`/`SPEC-006.md`/`SPEC-007.md`.
+
 ---
 
 *Documento de arquitectura v1 · 11 de julio de 2026 · próximo paso sugerido: validar §1 y confirmar el motor de base de datos antes de iniciar la fase 0.*

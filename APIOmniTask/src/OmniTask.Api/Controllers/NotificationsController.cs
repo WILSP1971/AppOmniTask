@@ -37,4 +37,11 @@ public class NotificationsController : ControllerBase
         await _notificationService.AcknowledgeAllAsync(User.GetUserId());
         return NoContent();
     }
+
+    [HttpDelete]
+    public async Task<IActionResult> ClearAll()
+    {
+        await _notificationService.ClearAllAsync(User.GetUserId());
+        return NoContent();
+    }
 }

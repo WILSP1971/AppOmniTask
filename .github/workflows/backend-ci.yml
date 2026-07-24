@@ -47,6 +47,8 @@ jobs:
           psql -h localhost -U postgres -d omnitask_test -f db/04_activity_attachments.sql
           psql -h localhost -U postgres -d omnitask_test -f db/05_activity_meeting.sql
           psql -h localhost -U postgres -d omnitask_test -f db/06_stored_procedures_attachments_and_meeting.sql
+          psql -h localhost -U postgres -d omnitask_test -f db/07_activity_type_birthday.sql
+          psql -h localhost -U postgres -d omnitask_test -f db/08_clear_notifications.sql
 
       # OmniTask.Tests (§25): las pruebas puramente unitarias (hasher, JWT,
       # PostgresExceptionMapper) corren siempre; las de integración usan

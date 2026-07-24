@@ -8,21 +8,26 @@ import '../../application/activity_actions_controller.dart';
 import '../activity_colors.dart';
 
 /// Tarjeta de "Mis citas" (SPEC-001 §2): badge de fecha (día grande + mes
-/// abreviado en español) coloreado por tipo, título, lugar, rango de hora y
-/// menú de 3 puntos con las mismas acciones que ya existían en la fila de
-/// Agenda del calendario anterior (abrir detalle) más editar/eliminar, que
-/// hoy viven en ActivityDetailScreen (reprogramar / cancelar) — se exponen
-/// aquí como atajo directo sin duplicar esa lógica (mismas rutas y mismo
-/// controller de acciones).
+/// abreviado en español), título, lugar, rango de hora, ícono de tipo en una
+/// esquina (SPEC-005 RF2) y menú de 3 puntos con las mismas acciones que ya
+/// existían en la fila de Agenda del calendario anterior (abrir detalle) más
+/// editar/eliminar, que hoy viven en ActivityDetailScreen (reprogramar /
+/// cancelar) — se exponen aquí como atajo directo sin duplicar esa lógica
+/// (mismas rutas y mismo controller de acciones).
+///
+/// [color] (SPEC-005 RF1): si se da, la tarjeta lo usa en vez de derivarlo de
+/// `activity.type` — así todas las tarjetas de un mismo día pueden compartir
+/// el color de su círculo en el calendario.
 class AppointmentCard extends ConsumerWidget {
-  const AppointmentCard({super.key, required this.activity});
+  const AppointmentCard({super.key, required this.activity, this.color});
 
   final Activity activity;
+  final Color? color;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
-    final typeColor = colorForActivityType(activity.type);
+    final typeColor = color ?? colorForActivityType(activity.type);
     final start = activity.startsAt?.toLocal();
     final end = activity.endsAt?.toLocal();
     final timeFormat = DateFormat.Hm('es_CO');
@@ -43,6 +48,53 @@ class AppointmentCard extends ConsumerWidget {
           border: Border.all(
               color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
         ),
+        child: Stack(
+          children: [
+            _AppointmentCardContent(
+              activity: activity,
+              typeColor: typeColor,
+              colorScheme: colorScheme,
+              timeLabel: timeLabel,
+              start: start,
+            ),
+            // SPEC-005 RF2: ícono de tipo en la esquina inferior derecha —
+            // lejos del menú de 3 puntos (arriba) para no superponerse.
+            Positioned(
+              bottom: 0,
+              right: 0,
+              child: Icon(
+                iconForActivityType(activity.type),
+                size: 15,
+                color: typeColor.withValues(alpha: 0.7),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AppointmentCardContent extends StatelessWidget {
+  const _AppointmentCardContent({
+    required this.activity,
+    required this.typeColor,
+    required this.colorScheme,
+    required this.timeLabel,
+    required this.start,
+  });
+
+  final Activity activity;
+  final Color typeColor;
+  final ColorScheme colorScheme;
+  final String? timeLabel;
+  final DateTime? start;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = timeLabel;
+    return Padding(
+        padding: const EdgeInsets.only(right: 18),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -82,7 +134,7 @@ class AppointmentCard extends ConsumerWidget {
                       ],
                     ),
                   ],
-                  if (timeLabel != null) ...[
+                  if (label != null) ...[
                     const SizedBox(height: 4),
                     Row(
                       children: [
@@ -90,7 +142,7 @@ class AppointmentCard extends ConsumerWidget {
                             size: 14, color: colorScheme.onSurfaceVariant),
                         const SizedBox(width: 4),
                         Text(
-                          timeLabel,
+                          label,
                           style: TextStyle(
                               fontSize: 12.5,
                               color: colorScheme.onSurfaceVariant),
@@ -104,8 +156,7 @@ class AppointmentCard extends ConsumerWidget {
             _AppointmentMenu(activity: activity),
           ],
         ),
-      ),
-    );
+      );
   }
 }
 

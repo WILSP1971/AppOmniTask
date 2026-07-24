@@ -9,6 +9,7 @@ import '../../backlog/application/unscheduled_activities_provider.dart';
 import '../../notifications/application/notifications_providers.dart';
 import '../application/activities_for_range_provider.dart';
 import '../application/visible_range_provider.dart';
+import 'activity_colors.dart';
 import 'widgets/agenda_header.dart';
 import 'widgets/appointments_section.dart';
 import 'widgets/month_calendar.dart';
@@ -115,6 +116,13 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         data: (activities) {
           final byDay = _groupByDay(activities);
           final selectedDayActivities = _filterForSelectedDay(activities);
+          // SPEC-005 RF1: mismo color que el círculo del día seleccionado en
+          // MonthCalendar — misma clave (`byDay`) y misma regla
+          // (`colorForDay`) para que siempre coincidan.
+          final selectedKey = DateTime(
+              _selectedDay.year, _selectedDay.month, _selectedDay.day);
+          final dayColor = colorForDay(
+              byDay[selectedKey] ?? const [], Theme.of(context).colorScheme.primary);
 
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -134,6 +142,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   emptyLabel: _searchQuery.isNotEmpty
                       ? 'Sin resultados para "$_searchQuery"'
                       : 'No tienes citas este día',
+                  dayColor: dayColor,
                 ),
                 const SizedBox(height: 20),
                 unscheduledAsync.when(

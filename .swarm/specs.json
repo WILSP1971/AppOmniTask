@@ -2,9 +2,9 @@
   "next_id": 8,
   "counters": {
     "PROPUESTA": 0,
-    "APROBADA": 4,
+    "APROBADA": 1,
     "RECHAZADA": 0,
-    "IMPLEMENTADA": 3,
+    "IMPLEMENTADA": 6,
     "EN_VERIFICACION": 0
   },
   "specs": [
@@ -60,35 +60,41 @@
     {
       "id": "SPEC-005",
       "titulo": "Color por dia, iconos de tipo, azul steel y rediseno del Login",
-      "estado": "APROBADA",
+      "estado": "IMPLEMENTADA",
       "aprobada": "2026-07-21",
       "aprobador": "Lead humano",
+      "implementada": "2026-07-24",
       "archivo": ".swarm/specs/SPEC-005.md",
       "creada": "2026-07-21",
       "autor": "DOCTOR STRANGE",
-      "responsable": "CAPTAIN AMERICA"
+      "responsable": "CAPTAIN AMERICA",
+      "nota": "flutter analyze sin issues, flutter test 49/49, flutter build apk --release compila y firma con el keystore existente. colorForDay() unifica el color del circulo del dia y el de las tarjetas de Mis citas; iconos de tipo por Icons; azul steel 0xFF4682B4 reemplaza 0xFF4A6CF7 en tema y color de tipo reunion; Login rediseñado con LoginBackgroundPainter (CustomPainter, sin animacion). Limitacion no bloqueante: sin dispositivo real, la validacion visual final queda en manos del Lead. Detalle completo en .swarm/CHECKPOINTS.md."
     },
     {
       "id": "SPEC-006",
       "titulo": "Tipo de actividad Cumpleanos",
-      "estado": "APROBADA",
+      "estado": "IMPLEMENTADA",
       "aprobada": "2026-07-21",
       "aprobador": "Lead humano",
+      "implementada": "2026-07-24",
       "archivo": ".swarm/specs/SPEC-006.md",
       "creada": "2026-07-21",
       "autor": "DOCTOR STRANGE",
-      "responsable": "CAPTAIN AMERICA"
+      "responsable": "CAPTAIN AMERICA",
+      "nota": "db/07_activity_type_birthday.sql (ALTER TYPE ... ADD VALUE, script propio) + ActivityType.Birthday en el backend + dropdown Cumpleaños en activity_edit_screen.dart. dotnet build 0 errores, dotnet test 49 passed. backend-ci.yml actualizado para aplicar db/07 contra Postgres real del job. Detalle completo en .swarm/CHECKPOINTS.md."
     },
     {
       "id": "SPEC-007",
       "titulo": "Limpiar historial de notificaciones",
-      "estado": "APROBADA",
+      "estado": "IMPLEMENTADA",
       "aprobada": "2026-07-21",
       "aprobador": "Lead humano",
+      "implementada": "2026-07-24",
       "archivo": ".swarm/specs/SPEC-007.md",
       "creada": "2026-07-21",
       "autor": "DOCTOR STRANGE",
-      "responsable": "CAPTAIN AMERICA"
+      "responsable": "CAPTAIN AMERICA",
+      "nota": "db/08_clear_notifications.sql (sp_clear_notifications) + DELETE /api/v1/notifications + boton Limpiar historial con confirmacion explicita en notifications_inbox_screen.dart. backend-ci.yml actualizado para aplicar db/08 contra Postgres real del job. Detalle completo en .swarm/CHECKPOINTS.md."
     }
   ]
 }

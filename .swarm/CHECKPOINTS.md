@@ -257,3 +257,92 @@ emulador Android real en este entorno de trabajo, así que la entrega real de
 una notificación push a un celular queda pendiente de verificación manual del
 Lead tras instalar el release. Todo lo demás (compilación, firma, flujo hasta
 `POST /devices`, UI de las 3 pantallas tocadas) sí se verificó de verdad.
+
+## SPEC-005 — Color por día, íconos de tipo, azul steel y rediseño del Login (implementada por CAPTAIN AMERICA 2026-07-24)
+
+- [x] CA1: `colorForDay()` (nueva, `activity_colors.dart`) es la única fuente
+      del color de un día — la usan tanto `MonthCalendar._dayAccent()` (círculo
+      del día) como `CalendarScreen.build()` (color pasado a
+      `AppointmentsSection.dayColor` → `AppointmentCard.color`), indexando la
+      MISMA lista (`byDay[selectedKey]`). Un día con 2+ tipos distintos ahora
+      muestra el mismo color en el círculo y en todas sus tarjetas de "Mis
+      citas" — antes cada tarjeta llamaba a `colorForActivityType(activity.type)`
+      por su cuenta y solo coincidía por casualidad en días de un único tipo.
+      "Pendientes por programar" no recibe `dayColor` (no tiene día), sigue
+      coloreando por tipo sin cambios.
+- [x] CA2: `AppointmentCard` agrega `iconForActivityType()` (nueva) en la
+      esquina inferior derecha de la tarjeta — reunión=`Icons.groups`,
+      tarea=`Icons.task_alt`, cita=`Icons.event`, cumpleaños=`Icons.cake` —
+      separado del menú de 3 puntos (arriba) para no superponerse.
+- [x] CA3: `#4A6CF7` → Steel Blue `#4682B4` en `app_theme.dart::_darkPrimary` y
+      `activity_colors.dart::colorForActivityType('meeting')` — mismo valor en
+      los dos lugares, un solo azul en toda la app.
+- [x] CA4: `login_screen.dart` rediseñado — `LoginBackgroundPainter` (nuevo,
+      `CustomPainter` con `MaskFilter.blur`, pintado una sola vez) + tarjeta
+      centrada (avatar circular, campos con `OutlineInputBorder` de píldora,
+      botón `StadiumBorder`, enlace "¿No tienes cuenta? Crear cuenta"); mismos
+      `_formKey`/controllers/validadores/`authNotifierProvider` y flujo de
+      error de antes — solo cambió la UI. `register_screen.dart` no se tocó.
+- [x] CA5 (transversal): `flutter analyze` → "No issues found!"; `flutter test`
+      → 49/49; `flutter build apk --release` compila y firma con el keystore
+      existente (59.1MB).
+- [x] C-NR (no regresión): `git diff` confirma cero cambios en `APIOmniTask/**`
+      ni `db/**` por esta SPEC, y `initState`/`_handleMonthChanged`/
+      `skipLoadingOnReload`/`onPageChanged` de `calendar_screen.dart` y
+      `month_calendar.dart` sin tocar (solo se refactorizó `_dayAccent()` para
+      llamar a `colorForDay()` en vez de duplicar la lógica).
+
+**Limitación documentada, no bloqueante:** R1 de la SPEC — sin dispositivo ni
+emulador real en este entorno, la validación visual final (contraste, verse
+bien en pantalla) queda en manos del Lead tras instalar el release.
+
+## SPEC-006 — Tipo de actividad "Cumpleaños" (implementada por CAPTAIN AMERICA 2026-07-24)
+
+- [x] CA1/CA2: `db/07_activity_type_birthday.sql` (`ALTER TYPE activity_type
+      ADD VALUE IF NOT EXISTS 'birthday'`, script propio — Postgres no permite
+      usar un valor de enum recién agregado en la misma transacción en que se
+      agrega); `ActivityType.Birthday` agregado a `OmniTask.Domain/Enums.cs`
+      (sin tocar `Program.cs`: `MapEnum<ActivityType>` ya mapea el enum
+      completo); `activity_edit_screen.dart` agrega
+      `DropdownMenuItem(value: 'birthday', child: Text('Cumpleaños'))`. Con
+      esto se puede crear/listar/editar/reprogramar/cancelar una actividad de
+      tipo cumpleaños igual que cualquier otra (mismos endpoints, sin cambios
+      de contrato).
+- [x] CA3: color propio vía `colorForActivityType('birthday')` (reutiliza
+      `kAccentPink`, distinto de los 3 tipos existentes) e ícono propio
+      (`Icons.cake`) en `iconForActivityType()` — compartidos con SPEC-005.
+- [x] CA4 (transversal): `dotnet build` 0 errores/warnings; `dotnet test` 49
+      passed (32 de integración se saltan sin Postgres real en este entorno,
+      igual que en corridas previas); `.github/workflows/backend-ci.yml`
+      actualizado para aplicar `db/07_*.sql` contra el Postgres real del job
+      de CI (antes solo llegaba hasta `db/06_*.sql`), así que la migración
+      queda validada contra Postgres real en cada corrida.
+- [x] C-NR: actividades con los 4 valores previos del enum siguen
+      funcionando igual — el cambio es aditivo (`ADD VALUE`, no reescribe
+      filas existentes).
+
+## SPEC-007 — Limpiar historial de notificaciones (implementada por CAPTAIN AMERICA 2026-07-24)
+
+- [x] CA1: `db/08_clear_notifications.sql` agrega
+      `sp_clear_notifications(p_user_id)` (`DELETE FROM notification_log WHERE
+      user_id = ...`); `INotificationService.ClearAllAsync` +
+      `NotificationService.ClearAllAsync` (mismo patrón que
+      `AcknowledgeAllAsync`) + `DELETE /api/v1/notifications` en
+      `NotificationsController` → `204 No Content`. `notification_repository.dart`
+      agrega `clearAll()`; `notifications_inbox_screen.dart` agrega un botón
+      "Limpiar historial" que, al confirmar, invalida
+      `notificationsInboxProvider`/`unreadNotificationsCountProvider`.
+- [x] CA2: el botón pide confirmación explícita (`AlertDialog` "¿Borrar todo
+      el historial de notificaciones? ... Esta acción no se puede deshacer")
+      antes de llamar al repositorio — cancelar el diálogo no invoca
+      `clearAll()`.
+- [x] CA3: el borrado usa `User.GetUserId()` igual que el resto de
+      `/notifications` — solo afecta filas del `user_id` autenticado.
+- [x] CA4: `reminder_id` en `notification_log` tiene `ON DELETE SET NULL`
+      hacia `notification_log`, no al revés — borrar aquí no dispara ninguna
+      cascada hacia `reminders` ni `activities`.
+- [x] CA5 (transversal): mismas corridas que SPEC-006 (`dotnet build`/
+      `dotnet test`/`flutter analyze`/`flutter test`), todas en verde; CI
+      actualizado para aplicar también `db/08_*.sql`.
+- [x] C-NR: `PATCH /{id}/ack` y `POST /ack-all` sin cambios de código ni de
+      comportamiento — solo se agregó un método nuevo al lado.

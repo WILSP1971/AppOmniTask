@@ -86,6 +86,7 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
                         DropdownMenuItem(value: 'meeting', child: Text('Reunión')),
                         DropdownMenuItem(value: 'appointment', child: Text('Cita')),
                         DropdownMenuItem(value: 'task', child: Text('Tarea')),
+                        DropdownMenuItem(value: 'birthday', child: Text('Cumpleaños')),
                         DropdownMenuItem(value: 'activity', child: Text('Actividad')),
                       ],
                       onChanged: (value) => setState(() => _type = value!),

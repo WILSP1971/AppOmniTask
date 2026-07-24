@@ -22,6 +22,7 @@ public enum ActivityType
     Appointment,
     Task,
     Activity,
+    Birthday,
 }
 
 public enum ActivityStatus

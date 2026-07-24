@@ -64,6 +64,7 @@ public interface INotificationService
     Task<int> UnreadCountAsync(Guid userId);
     Task AcknowledgeAsync(Guid userId, Guid notificationId);
     Task AcknowledgeAllAsync(Guid userId);
+    Task ClearAllAsync(Guid userId);
 }
 
 // Implementada en Infrastructure (WhatsAppCloudApiClient) — llama a la Cloud API de Meta (§7).

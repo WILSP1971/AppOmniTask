@@ -14,7 +14,9 @@ abstract final class AppTheme {
   static const _darkBackground = Color(0xFF1C2733);
   static const _darkSurface = Color(0xFF26313F);
   static const _darkSurfaceHigh = Color(0xFF2A3646);
-  static const _darkPrimary = Color(0xFF4A6CF7);
+  // SPEC-005 RF3: azul steel reemplaza al periwinkle original, mismo valor
+  // que colorForActivityType('meeting') en activity_colors.dart.
+  static const _darkPrimary = Color(0xFF4682B4);
   static const _darkTextPrimary = Color(0xFFF5F7FA);
   static const _darkTextSecondary = Color(0xFF8A97A8);
 

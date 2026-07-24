@@ -26,6 +26,11 @@ class NotificationsInboxScreen extends ConsumerWidget {
             },
             child: const Text('Marcar todas'),
           ),
+          IconButton(
+            tooltip: 'Limpiar historial',
+            icon: const Icon(Icons.delete_sweep_outlined),
+            onPressed: () => _confirmClearAll(context, ref),
+          ),
         ],
       ),
       body: notificationsAsync.when(
@@ -53,6 +58,33 @@ class NotificationsInboxScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// SPEC-007 RNF2: nunca borra sin confirmación explícita — es irreversible.
+  Future<void> _confirmClearAll(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('¿Borrar todo el historial de notificaciones?'),
+        content:
+            const Text('Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Borrar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(notificationRepositoryProvider).clearAll();
+      ref.invalidate(notificationsInboxProvider);
+      ref.invalidate(unreadNotificationsCountProvider);
+    }
   }
 }
 

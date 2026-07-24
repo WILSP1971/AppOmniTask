@@ -33,12 +33,10 @@ class MonthCalendar extends StatelessWidget {
     return activitiesByDay[key] ?? const [];
   }
 
-  /// Color más relevante del día: el primer tipo distinto encontrado entre
-  /// sus actividades, o el primary del tema si no hay actividades ese día.
+  /// Color más relevante del día — misma regla que usa `CalendarScreen` para
+  /// las tarjetas de "Mis citas" (SPEC-005 RF1), vía `colorForDay`.
   Color _dayAccent(BuildContext context, DateTime day) {
-    final activities = _activitiesFor(day);
-    if (activities.isEmpty) return Theme.of(context).colorScheme.primary;
-    return colorForActivityType(activities.first.type);
+    return colorForDay(_activitiesFor(day), Theme.of(context).colorScheme.primary);
   }
 
   @override
