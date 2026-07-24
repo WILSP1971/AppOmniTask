@@ -415,3 +415,44 @@ de punta a punta.
 - [x] C-NR: no se tocó `calendar_screen.dart`/`month_calendar.dart`/
       `appointments_section.dart`/`appointment_card.dart` ni el ícono por
       tipo; la navegación al detalle de la tarjeta no cambió.
+
+## SPEC-009 — Frontend Flutter: selección múltiple de contactos (implementada por CAPTAIN AMERICA 2026-07-24)
+
+- [x] CA1: `ContactPickerField` reescrito a multi-selección
+      (`List<Contact> selectedContacts` + `ValueChanged<List<Contact>>`),
+      chips (`InputChip`/`Wrap`) con `onDeleted`; buscar y agregar 2+
+      contactos los asocia todos al crear (`activity_repository.dart` envía
+      `contact_ids`).
+- [x] CA2: `_hydrateFrom` en `activity_edit_screen.dart` ahora precarga
+      `existing.contacts` — cierra el gap real de que la edición nunca
+      hidrataba el contacto.
+- [x] CA3: `updateActivity` siempre envía `contactIds` como el conjunto
+      completo actual (reemplazo, alineado con SPEC-008 RF5); una lista
+      vacía intencional quita todos los contactos.
+- [x] CA4: `activity_detail_screen.dart` agrega una sección condicional
+      (`_InfoRow` con ícono `person_outline`/`people_outline`) listando
+      nombre y teléfono de cada contacto; oculta si `activity.contacts` está
+      vacío.
+- [x] CA5: `ContactPickerField` filtra de los resultados de búsqueda los
+      contactos ya seleccionados — sin duplicados posibles en chips ni en
+      `contact_ids`.
+- [x] CA6 (transversal): `dart run build_runner build` sin errores;
+      `flutter analyze` → "No issues found!"; `flutter test` → 52/52 (49
+      previos + 3 nuevos que cubren las tres ramas de `contactIds` en
+      `update`: null/vacío/con valores). `flutter build apk --release`
+      compila y firma con el keystore existente.
+- [x] C-NR: `calendar_screen.dart`, `month_calendar.dart`,
+      `activities_by_date_screen.dart` (SPEC-010), paleta/tema y el patrón
+      anti-bucle del calendario sin cambios; `ContactPickerField` solo tenía
+      un consumidor (`activity_edit_screen.dart`), verificado con grep antes
+      de cambiar su firma.
+
+**Decisión de diseño:** se reutilizó el modelo `Contact` existente para
+`Activity.contacts` (en vez de crear un `ActivityContact` nuevo), ya que el
+JSON `contacts` de SPEC-008 (`{id, full_name, phone_e164}`) es
+estructuralmente idéntico a `ContactResponse`.
+
+**Limitación documentada, no bloqueante:** R4 de la SPEC — sin dispositivo
+real en este entorno, la apariencia final de los chips y la sección de
+contactos en el detalle se valida por lectura + `flutter test`; la revisión
+visual queda en manos del Lead tras instalar el release.

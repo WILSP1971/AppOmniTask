@@ -9,19 +9,21 @@ import '../../../contacts/data/contact_repository.dart';
 /// Autocompletar con debounce contra GET /contacts?search= (§14) — no trae
 /// la lista completa de contactos al abrir el formulario; para una clínica
 /// con cientos de pacientes, cargarlos todos de una vez sería innecesario.
+///
+/// SPEC-009 (§3 RF1): multi-selección — gestiona una lista de contactos
+/// seleccionados, mostrados como chips con botón de quitar.
 class ContactPickerField extends ConsumerStatefulWidget {
-  const ContactPickerField({super.key, required this.selectedContact, required this.onChanged});
+  const ContactPickerField({super.key, required this.selectedContacts, required this.onChanged});
 
-  final Contact? selectedContact;
-  final ValueChanged<Contact?> onChanged;
+  final List<Contact> selectedContacts;
+  final ValueChanged<List<Contact>> onChanged;
 
   @override
   ConsumerState<ContactPickerField> createState() => _ContactPickerFieldState();
 }
 
 class _ContactPickerFieldState extends ConsumerState<ContactPickerField> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.selectedContact?.fullName ?? '');
+  final TextEditingController _controller = TextEditingController();
   Timer? _debounce;
   List<Contact> _results = [];
   bool _isSearching = false;
@@ -34,7 +36,6 @@ class _ContactPickerFieldState extends ConsumerState<ContactPickerField> {
   }
 
   void _onQueryChanged(String query) {
-    widget.onChanged(null);
     _debounce?.cancel();
     if (query.trim().length < 2) {
       setState(() => _results = []);
@@ -45,10 +46,25 @@ class _ContactPickerFieldState extends ConsumerState<ContactPickerField> {
       final results = await ref.read(contactRepositoryProvider).search(query.trim());
       if (!mounted) return;
       setState(() {
-        _results = results;
+        // No ofrecer/duplicar un contacto ya seleccionado (§3 RF1, CA5).
+        _results = results
+            .where((c) => !widget.selectedContacts.any((s) => s.id == c.id))
+            .toList();
         _isSearching = false;
       });
     });
+  }
+
+  void _addContact(Contact contact) {
+    if (widget.selectedContacts.any((c) => c.id == contact.id)) return;
+    widget.onChanged([...widget.selectedContacts, contact]);
+    _controller.clear();
+    setState(() => _results = []);
+    FocusScope.of(context).unfocus();
+  }
+
+  void _removeContact(Contact contact) {
+    widget.onChanged(widget.selectedContacts.where((c) => c.id != contact.id).toList());
   }
 
   @override
@@ -56,10 +72,23 @@ class _ContactPickerFieldState extends ConsumerState<ContactPickerField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (widget.selectedContacts.isNotEmpty) ...[
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: widget.selectedContacts
+                .map((contact) => InputChip(
+                      label: Text(contact.fullName),
+                      onDeleted: () => _removeContact(contact),
+                    ))
+                .toList(),
+          ),
+          const SizedBox(height: 8),
+        ],
         TextField(
           controller: _controller,
           decoration: InputDecoration(
-            labelText: 'Contacto (opcional)',
+            labelText: 'Contactos (opcional)',
             suffixIcon: _isSearching
                 ? const Padding(
                     padding: EdgeInsets.all(12),
@@ -81,12 +110,7 @@ class _ContactPickerFieldState extends ConsumerState<ContactPickerField> {
                 return ListTile(
                   title: Text(contact.fullName),
                   subtitle: Text(contact.phoneE164),
-                  onTap: () {
-                    _controller.text = contact.fullName;
-                    widget.onChanged(contact);
-                    setState(() => _results = []);
-                    FocusScope.of(context).unfocus();
-                  },
+                  onTap: () => _addContact(contact),
                 );
               },
             ),

@@ -29,7 +29,7 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
   final _descriptionController = TextEditingController();
   final _meetingUrlController = TextEditingController();
   String _type = 'appointment';
-  Contact? _contact;
+  List<Contact> _contacts = [];
   bool _hasDate = true;
   DateTime? _startsAt;
   DateTime? _endsAt;
@@ -57,6 +57,9 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
     _endsAt = existing.endsAt?.toLocal();
     _meetingUrlController.text = existing.meetingUrl ?? '';
     _meetingProvider = existing.meetingProvider;
+    // SPEC-009 (§3 RF5): precarga los contactos existentes al editar — cierra
+    // el gap de que hoy no se hidrataba ningún contacto en edición.
+    _contacts = existing.contacts;
     _initialized = true;
   }
 
@@ -119,8 +122,8 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
                     ),
                     const SizedBox(height: 12),
                     ContactPickerField(
-                      selectedContact: _contact,
-                      onChanged: (contact) => setState(() => _contact = contact),
+                      selectedContacts: _contacts,
+                      onChanged: (contacts) => setState(() => _contacts = contacts),
                     ),
                     SwitchListTile(
                       title: const Text('Sin fecha por ahora'),
@@ -206,12 +209,13 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
             clearEndsAt: !_hasDate,
             meetingUrl: meetingUrl,
             meetingProvider: meetingProvider,
+            contactIds: _contacts.map((c) => c.id).toList(),
           )
         : await controller.create(ActivityDraft(
             type: _type,
             title: _titleController.text.trim(),
             description: description,
-            contactId: _contact?.id,
+            contactIds: _contacts.map((c) => c.id).toList(),
             startsAt: _hasDate ? _startsAt : null,
             endsAt: _hasDate ? _endsAt : null,
             meetingUrl: meetingUrl,

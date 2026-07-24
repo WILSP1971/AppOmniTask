@@ -1,5 +1,6 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import 'contact.dart';
 import 'reminder_summary.dart';
 
 part 'activity.freezed.dart';
@@ -13,7 +14,12 @@ class Activity with _$Activity {
   const factory Activity({
     required String id,
     required String userId,
+    // SPEC-009 (§3 RF3): se mantiene por compatibilidad de lectura durante la
+    // ventana de transición (SPEC-008 RF12); la UI nueva usa `contacts`, no este campo.
     String? contactId,
+    // SPEC-009 (§3 RF3): lista de contactos asociados (SPEC-008 RF9: `contacts`
+    // = [{id, full_name, phone_e164}]), reutilizando el modelo `Contact` existente.
+    @Default(<Contact>[]) List<Contact> contacts,
     required String type,
     required String title,
     String? description,

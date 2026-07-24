@@ -33,6 +33,7 @@ class ActivityFormController extends _$ActivityFormController {
     String? location,
     String? meetingUrl,
     String? meetingProvider,
+    List<String>? contactIds,
   }) =>
       _submit(() => ref.read(activityRepositoryProvider).update(
             id,
@@ -45,6 +46,7 @@ class ActivityFormController extends _$ActivityFormController {
             location: location,
             meetingUrl: meetingUrl,
             meetingProvider: meetingProvider,
+            contactIds: contactIds,
           ));
 
   Future<Activity?> _submit(Future<Activity> Function() action) async {

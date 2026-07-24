@@ -13,7 +13,7 @@ class ActivityDraft with _$ActivityDraft {
     required String type,
     required String title,
     String? description,
-    String? contactId,
+    @Default(<String>[]) List<String> contactIds,
     DateTime? startsAt,
     DateTime? endsAt,
     String? location,

@@ -2,9 +2,9 @@
   "next_id": 11,
   "counters": {
     "PROPUESTA": 0,
-    "APROBADA": 2,
+    "APROBADA": 1,
     "RECHAZADA": 0,
-    "IMPLEMENTADA": 8,
+    "IMPLEMENTADA": 9,
     "EN_VERIFICACION": 0
   },
   "specs": [
@@ -112,13 +112,15 @@
     {
       "id": "SPEC-009",
       "titulo": "Frontend Flutter: seleccion multiple de contactos",
-      "estado": "APROBADA",
+      "estado": "IMPLEMENTADA",
       "creada": "2026-07-24",
       "aprobada": "2026-07-24",
+      "implementada": "2026-07-24",
       "aprobador": "Lead humano",
       "archivo": ".swarm/specs/SPEC-009.md",
       "autor": "DOCTOR STRANGE",
-      "responsable": "CAPTAIN AMERICA"
+      "responsable": "CAPTAIN AMERICA",
+      "nota": "ContactPickerField multi-seleccion con chips (InputChip + Wrap), ActivityDraft.contactIds, Activity.contacts (List<Contact>, reutilizando el modelo existente, manteniendo contactId legado), activity_repository.dart envia contact_ids en create y update (update: null=no tocar, []=quitar todos), activity_edit_screen.dart hidrata _contacts en _hydrateFrom y los envia en create/update, activity_detail_screen.dart muestra seccion de contactos (oculta si no hay ninguno), activity_form_controller.dart propaga contactIds. flutter analyze sin issues, flutter test 52/52 (49 previos + 3 nuevos para cubrir contact_ids en update). Verificado por el orquestador: dotnet/flutter en verde, revision de diffs sin hallazgos. Detalle completo en .swarm/CHECKPOINTS.md."
     },
     {
       "id": "SPEC-010",

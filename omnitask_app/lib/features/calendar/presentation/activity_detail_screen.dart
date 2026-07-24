@@ -85,6 +85,20 @@ class _DetailBody extends ConsumerWidget {
                   _InfoRow(
                       icon: Icons.place_outlined, text: activity.location!),
                 ],
+                // SPEC-009 (§3 RF6): lista de contactos de la actividad; no se
+                // muestra la sección si no hay contactos (mismo criterio
+                // condicional que location/description).
+                if (activity.contacts.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _InfoRow(
+                    icon: activity.contacts.length > 1
+                        ? Icons.people_outline
+                        : Icons.person_outline,
+                    text: activity.contacts
+                        .map((c) => '${c.fullName} (${c.phoneE164})')
+                        .join(', '),
+                  ),
+                ],
                 if (activity.description != null) ...[
                   const SizedBox(height: 12),
                   Text(activity.description!),

@@ -100,21 +100,44 @@ void main() {
   });
 
   group('create', () {
-    test('manda type/title/contact_id y fechas en UTC (§6)', () async {
+    test('manda type/title/contact_ids y fechas en UTC (§6, SPEC-009 §3 RF4)', () async {
       final localStart = DateTime(2026, 7, 14, 15); // hora local, no UTC
 
       await repository.create(ActivityDraft(
         type: 'appointment',
         title: 'Control',
-        contactId: 'c1',
+        contactIds: const ['c1'],
         startsAt: localStart,
       ));
 
       final body = recorder.lastRequest!.data as Map<String, dynamic>;
       expect(recorder.lastRequest!.path, '/activities');
       expect(body['type'], 'appointment');
-      expect(body['contact_id'], 'c1');
+      expect(body['contact_ids'], ['c1']);
       expect(body['starts_at'], localStart.toUtc().toIso8601String());
+    });
+  });
+
+  group('update — contact_ids (SPEC-009 §3 RF4)', () {
+    test('contactIds null no incluye contact_ids en el PATCH (no tocar)', () async {
+      await repository.update('a1', title: 'Nuevo título');
+
+      final body = recorder.lastRequest!.data as Map<String, dynamic>;
+      expect(body.containsKey('contact_ids'), isFalse);
+    });
+
+    test('contactIds vacío manda contact_ids: [] (quitar todos)', () async {
+      await repository.update('a1', contactIds: const []);
+
+      final body = recorder.lastRequest!.data as Map<String, dynamic>;
+      expect(body['contact_ids'], isEmpty);
+    });
+
+    test('contactIds con valores reemplaza el conjunto completo', () async {
+      await repository.update('a1', contactIds: const ['c1', 'c2']);
+
+      final body = recorder.lastRequest!.data as Map<String, dynamic>;
+      expect(body['contact_ids'], ['c1', 'c2']);
     });
   });
 

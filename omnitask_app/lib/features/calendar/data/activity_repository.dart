@@ -15,7 +15,7 @@ class ActivityRepository {
       'type': draft.type,
       'title': draft.title,
       'description': draft.description,
-      'contact_id': draft.contactId,
+      'contact_ids': draft.contactIds,
       'starts_at': draft.startsAt?.toUtc().toIso8601String(),
       'ends_at': draft.endsAt?.toUtc().toIso8601String(),
       'location': draft.location,
@@ -78,6 +78,9 @@ class ActivityRepository {
   /// meetingUrl/meetingProvider siguen el mismo criterio "NULL = no lo
   /// toques" que title/description/location (SPEC-003 §6): no hay flag de
   /// "limpiar" porque no fue pedido por la SPEC.
+  /// contactIds sigue el mismo criterio (SPEC-009 §3 RF4): null = no tocar los
+  /// contactos; lista vacía = quitar todos (reemplazo de conjunto completo,
+  /// alineado con SPEC-008 RF9).
   Future<Activity> update(
     String id, {
     String? title,
@@ -90,6 +93,7 @@ class ActivityRepository {
     String? location,
     String? meetingUrl,
     String? meetingProvider,
+    List<String>? contactIds,
   }) async {
     final response = await _dio.patch('/activities/$id', data: {
       if (title != null) 'title': title,
@@ -102,6 +106,7 @@ class ActivityRepository {
       if (location != null) 'location': location,
       if (meetingUrl != null) 'meeting_url': meetingUrl,
       if (meetingProvider != null) 'meeting_provider': meetingProvider,
+      if (contactIds != null) 'contact_ids': contactIds,
     });
     return Activity.fromJson(response.data as Map<String, dynamic>);
   }
