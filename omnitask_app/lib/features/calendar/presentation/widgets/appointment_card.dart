@@ -28,6 +28,13 @@ class AppointmentCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final colorScheme = Theme.of(context).colorScheme;
     final typeColor = color ?? colorForActivityType(activity.type);
+    // Checkpoint C8 (WCAG AA), mismo criterio que `month_calendar.dart`
+    // `_dayCircle`: con el fondo pintado del color sólido del día/tipo, el
+    // texto se elige por brillo del fondo (blanco/negro), no fijo.
+    final onCard =
+        ThemeData.estimateBrightnessForColor(typeColor) == Brightness.light
+            ? Colors.black87
+            : Colors.white;
     final start = activity.startsAt?.toLocal();
     final end = activity.endsAt?.toLocal();
     final timeFormat = DateFormat.Hm('es_CO');
@@ -43,29 +50,31 @@ class AppointmentCard extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerLow,
+          color: typeColor,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-              color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+          border: Border.all(color: onCard.withValues(alpha: 0.15)),
         ),
         child: Stack(
           children: [
             _AppointmentCardContent(
               activity: activity,
               typeColor: typeColor,
+              onCard: onCard,
               colorScheme: colorScheme,
               timeLabel: timeLabel,
               start: start,
             ),
             // SPEC-005 RF2: ícono de tipo en la esquina inferior derecha —
             // lejos del menú de 3 puntos (arriba) para no superponerse.
+            // RF3: `onCard` con alpha (no `typeColor` con alpha, que sobre un
+            // fondo del mismo `typeColor` quedaría invisible).
             Positioned(
               bottom: 0,
               right: 0,
               child: Icon(
                 iconForActivityType(activity.type),
                 size: 15,
-                color: typeColor.withValues(alpha: 0.7),
+                color: onCard.withValues(alpha: 0.7),
               ),
             ),
           ],
@@ -79,6 +88,7 @@ class _AppointmentCardContent extends StatelessWidget {
   const _AppointmentCardContent({
     required this.activity,
     required this.typeColor,
+    required this.onCard,
     required this.colorScheme,
     required this.timeLabel,
     required this.start,
@@ -86,6 +96,7 @@ class _AppointmentCardContent extends StatelessWidget {
 
   final Activity activity;
   final Color typeColor;
+  final Color onCard;
   final ColorScheme colorScheme;
   final String? timeLabel;
   final DateTime? start;
@@ -98,7 +109,7 @@ class _AppointmentCardContent extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _DateBadge(day: start, color: typeColor),
+            _DateBadge(day: start, onCard: onCard),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -109,8 +120,8 @@ class _AppointmentCardContent extends StatelessWidget {
                     activity.title,
                     style: TextStyle(
                       fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                      color: onCard,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -120,14 +131,14 @@ class _AppointmentCardContent extends StatelessWidget {
                     Row(
                       children: [
                         Icon(Icons.place_outlined,
-                            size: 14, color: colorScheme.onSurfaceVariant),
+                            size: 14, color: onCard.withValues(alpha: 0.75)),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
                             activity.location!,
                             style: TextStyle(
                                 fontSize: 12.5,
-                                color: colorScheme.onSurfaceVariant),
+                                color: onCard.withValues(alpha: 0.75)),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
@@ -139,13 +150,13 @@ class _AppointmentCardContent extends StatelessWidget {
                     Row(
                       children: [
                         Icon(Icons.schedule_outlined,
-                            size: 14, color: colorScheme.onSurfaceVariant),
+                            size: 14, color: onCard.withValues(alpha: 0.75)),
                         const SizedBox(width: 4),
                         Text(
                           label,
                           style: TextStyle(
                               fontSize: 12.5,
-                              color: colorScheme.onSurfaceVariant),
+                              color: onCard.withValues(alpha: 0.75)),
                         ),
                       ],
                     ),
@@ -153,7 +164,7 @@ class _AppointmentCardContent extends StatelessWidget {
                 ],
               ),
             ),
-            _AppointmentMenu(activity: activity),
+            _AppointmentMenu(activity: activity, onCard: onCard),
           ],
         ),
       );
@@ -161,10 +172,15 @@ class _AppointmentCardContent extends StatelessWidget {
 }
 
 class _DateBadge extends StatelessWidget {
-  const _DateBadge({required this.day, required this.color});
+  const _DateBadge({required this.day, required this.onCard});
 
   final DateTime? day;
-  final Color color;
+
+  /// Color de primer plano ya calculado por brillo del fondo (RF2/C8). El
+  /// badge usa una variante semitransparente de `onCard` como fondo propio y
+  /// `onCard` sólido como texto — no `typeColor` con alpha, que sobre un
+  /// fondo del mismo `typeColor` quedaría ilegible (RF3).
+  final Color onCard;
 
   @override
   Widget build(BuildContext context) {
@@ -174,7 +190,7 @@ class _DateBadge extends StatelessWidget {
       width: 52,
       padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
+        color: onCard.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(14),
       ),
       alignment: Alignment.center,
@@ -184,7 +200,7 @@ class _DateBadge extends StatelessWidget {
           Text(
             day == null ? '--' : '${day!.day}',
             style: TextStyle(
-              color: color,
+              color: onCard,
               fontSize: 20,
               fontWeight: FontWeight.w800,
             ),
@@ -193,7 +209,7 @@ class _DateBadge extends StatelessWidget {
             Text(
               monthLabel,
               style: TextStyle(
-                color: color,
+                color: onCard,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
@@ -205,15 +221,15 @@ class _DateBadge extends StatelessWidget {
 }
 
 class _AppointmentMenu extends ConsumerWidget {
-  const _AppointmentMenu({required this.activity});
+  const _AppointmentMenu({required this.activity, required this.onCard});
 
   final Activity activity;
+  final Color onCard;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return PopupMenuButton<String>(
-      icon: Icon(Icons.more_vert,
-          color: Theme.of(context).colorScheme.onSurfaceVariant),
+      icon: Icon(Icons.more_vert, color: onCard.withValues(alpha: 0.75)),
       tooltip: 'Más opciones para ${activity.title}',
       onSelected: (value) async {
         switch (value) {

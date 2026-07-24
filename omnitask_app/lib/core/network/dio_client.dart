@@ -51,3 +51,20 @@ String mapApiError(Object error) {
   }
   return 'Algo falló. Intenta de nuevo.';
 }
+
+/// Modo diagnóstico (SPEC-011 RF6): variante de [mapApiError] para pantallas
+/// donde el Lead necesita ver el error real sin `adb` (p. ej. la búsqueda de
+/// contactos). Si la excepción es un `DioException` con el sobre de la API
+/// reconocible, reutiliza [mapApiError]; si no, muestra el texto real de la
+/// excepción (con su `runtimeType`) en vez de un genérico — es intencional
+/// (R5 de SPEC-011): solo aparece cuando la operación falla.
+String describeSearchError(Object error) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final message = data['error']?['message'];
+      if (message is String) return message;
+    }
+  }
+  return '${error.runtimeType}: $error';
+}

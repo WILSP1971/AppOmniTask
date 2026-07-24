@@ -456,3 +456,42 @@ estructuralmente idéntico a `ContactResponse`.
 real en este entorno, la apariencia final de los chips y la sección de
 contactos en el detalle se valida por lectura + `flutter test`; la revisión
 visual queda en manos del Lead tras instalar el release.
+
+## SPEC-011 — Fondo de tarjeta con color del día + fix de búsqueda de contactos atascada (implementada por CAPTAIN AMERICA 2026-07-25)
+
+- [x] CA1/CA2 (A): `AppointmentCard` pinta el fondo del `Container` raíz con
+      `typeColor` (color del día en "Mis citas", color por tipo en
+      "Pendientes por programar") en vez del gris fijo
+      `colorScheme.surfaceContainerLow`.
+- [x] CA3 (A): color de texto `onCard` calculado con
+      `ThemeData.estimateBrightnessForColor(typeColor)` — mismo criterio C8
+      que `month_calendar.dart::_dayCircle`. Badge de fecha, ícono de tipo de
+      la esquina y menú de 3 puntos pasan de `typeColor`/`onSurfaceVariant`
+      con alpha a `onCard` con alpha (evita que el badge quede invisible
+      sobre un fondo del mismo color).
+- [x] CA4/CA5 (B): `_onQueryChanged` envuelve la búsqueda en
+      try/catch/finally — el `finally` apaga el spinner siempre; el `catch`
+      llama a `describeSearchError` (nuevo, junto a `mapApiError` en
+      `dio_client.dart`), que muestra el mensaje real de la excepción cuando
+      no es un sobre de API reconocible.
+- [x] CA6 (B): "Sin coincidencias" (consulta OK, lista vacía) se distingue
+      visualmente de un error (ícono + color `colorScheme.error`).
+- [x] CA7 (B): `_errorMessage` se limpia al iniciar cada nueva búsqueda.
+- [x] CA8 (B): flujo multi-contacto (buscar → agregar chip → guardar) verificado
+      con un test dedicado — sin regresión de SPEC-009.
+- [x] C-Q (transversal): `flutter analyze` → "No issues found!"; `flutter
+      test` → 56/56 (52 previos + 4 nuevos en
+      `contact_picker_field_test.dart`, cubriendo CA4/CA5/CA6/CA7/CA8);
+      `flutter build apk --release` compila y firma con el keystore
+      existente.
+- [x] C-NR: `ContractPickerField` mantiene su firma pública
+      (`selectedContacts`/`onChanged`); `ContactRepository.search` endurece
+      el parseo de `response.data` (RF8) sin cambiar su firma; cero cambios
+      en `calendar_screen.dart`/`month_calendar.dart`/`colorForDay`/paleta.
+
+**Limitación documentada, no bloqueante:** R1 de la SPEC — sin dispositivo ni
+`adb` en este entorno, no se pudo confirmar la causa raíz EXACTA de la
+excepción original en `search()` (RF8 es mejor esfuerzo). La mitigación
+acordada con el Lead (RF5/RF6) queda entregada: el spinner ya no se cuelga
+nunca, y si vuelve a fallar en el celular, el mensaje en pantalla será el
+diagnóstico exacto sin necesitar herramientas adicionales.

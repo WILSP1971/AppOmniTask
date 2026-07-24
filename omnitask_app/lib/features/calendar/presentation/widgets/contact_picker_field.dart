@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/network/dio_client.dart';
 import '../../../../models/contact.dart';
 import '../../../contacts/data/contact_repository.dart';
 
@@ -28,6 +29,10 @@ class _ContactPickerFieldState extends ConsumerState<ContactPickerField> {
   List<Contact> _results = [];
   bool _isSearching = false;
 
+  /// Mensaje de error real de la última búsqueda fallida (RF6, SPEC-011) —
+  /// `null` cuando no hay error (búsqueda en curso, sin resultados u OK).
+  String? _errorMessage;
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -38,20 +43,42 @@ class _ContactPickerFieldState extends ConsumerState<ContactPickerField> {
   void _onQueryChanged(String query) {
     _debounce?.cancel();
     if (query.trim().length < 2) {
-      setState(() => _results = []);
+      setState(() {
+        _results = [];
+        _errorMessage = null;
+      });
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 350), () async {
-      setState(() => _isSearching = true);
-      final results = await ref.read(contactRepositoryProvider).search(query.trim());
-      if (!mounted) return;
+      // RF7: limpiar el error de un intento previo antes de reintentar, para
+      // no dejar un mensaje viejo pegado en pantalla.
       setState(() {
-        // No ofrecer/duplicar un contacto ya seleccionado (§3 RF1, CA5).
-        _results = results
-            .where((c) => !widget.selectedContacts.any((s) => s.id == c.id))
-            .toList();
-        _isSearching = false;
+        _isSearching = true;
+        _errorMessage = null;
       });
+      try {
+        final results = await ref.read(contactRepositoryProvider).search(query.trim());
+        if (!mounted) return;
+        setState(() {
+          // No ofrecer/duplicar un contacto ya seleccionado (§3 RF1, CA5).
+          _results = results
+              .where((c) => !widget.selectedContacts.any((s) => s.id == c.id))
+              .toList();
+        });
+      } catch (e) {
+        // RF6: mensaje de error real en pantalla (modo diagnóstico), no un
+        // genérico — así una falla en el celular del Lead es diagnosticable
+        // sin `adb`.
+        if (!mounted) return;
+        setState(() {
+          _results = [];
+          _errorMessage = describeSearchError(e);
+        });
+      } finally {
+        // RF5 (fix principal): el spinner SIEMPRE se apaga, pase lo que
+        // pase — evita el spinner infinito ante una excepción de `search()`.
+        if (mounted) setState(() => _isSearching = false);
+      }
     });
   }
 
@@ -98,7 +125,43 @@ class _ContactPickerFieldState extends ConsumerState<ContactPickerField> {
           ),
           onChanged: _onQueryChanged,
         ),
-        if (_results.isNotEmpty)
+        // RF7: tres estados distintos bajo el campo — buscando (spinner en el
+        // propio TextField, arriba), error (mensaje real, estilo de error) y
+        // sin resultados (consulta OK con lista vacía, texto tenue) frente a
+        // resultados (lista). Nunca se muestran a la vez.
+        if (!_isSearching && _errorMessage != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.error_outline,
+                    size: 16, color: Theme.of(context).colorScheme.error),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _errorMessage!,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12.5),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (!_isSearching &&
+            _errorMessage == null &&
+            _results.isEmpty &&
+            _controller.text.trim().length >= 2)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'Sin coincidencias',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 12.5,
+              ),
+            ),
+          )
+        else if (_results.isNotEmpty)
           Container(
             constraints: const BoxConstraints(maxHeight: 200),
             decoration: BoxDecoration(border: Border.all(color: Theme.of(context).dividerColor)),

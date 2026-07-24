@@ -1,10 +1,10 @@
 {
-  "next_id": 11,
+  "next_id": 12,
   "counters": {
     "PROPUESTA": 0,
     "APROBADA": 1,
     "RECHAZADA": 0,
-    "IMPLEMENTADA": 9,
+    "IMPLEMENTADA": 10,
     "EN_VERIFICACION": 0
   },
   "specs": [
@@ -134,6 +134,19 @@
       "autor": "DOCTOR STRANGE",
       "responsable": "CAPTAIN AMERICA",
       "nota": "activities_by_date_screen.dart calcula dayColor una sola vez por dia consultado (colorForDay(), misma funcion/fallback que Mis citas SPEC-005) y lo pasa a _ActivityTile en vez de colorForActivityType(type). flutter analyze sin issues, flutter test 49/49. Detalle completo en .swarm/CHECKPOINTS.md."
+    },
+    {
+      "id": "SPEC-011",
+      "titulo": "Fondo de tarjeta con color del dia + fix de busqueda de contactos atascada",
+      "estado": "IMPLEMENTADA",
+      "creada": "2026-07-24",
+      "aprobada": "2026-07-25",
+      "implementada": "2026-07-25",
+      "aprobador": "Lead humano",
+      "archivo": ".swarm/specs/SPEC-011.md",
+      "autor": "DOCTOR STRANGE",
+      "responsable": "CAPTAIN AMERICA",
+      "nota": "Punto A: AppointmentCard pinta el fondo con typeColor (color del dia en Mis citas, color por tipo en Pendientes por programar) con texto legible via estimateBrightnessForColor (precedente C8), incluyendo badge/icono/menu ajustados a onCard. Punto B: try/catch/finally en contact_picker_field._onQueryChanged que SIEMPRE apaga el spinner, describeSearchError muestra el mensaje de error REAL en pantalla (diagnostico sin adb), diferencia sin-coincidencias de error, y ContactRepository.search endurece el parseo. flutter analyze sin issues, flutter test 56/56 (52 previos + 4 nuevos), flutter build apk --release compila y firma. Limitacion conocida: sin dispositivo/adb, la causa raiz exacta del bug original es mejor-esfuerzo; mostrar el error real es la mitigacion acordada con el Lead. Detalle completo en .swarm/CHECKPOINTS.md."
     }
   ]
 }
