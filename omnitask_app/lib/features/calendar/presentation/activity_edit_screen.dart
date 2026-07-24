@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/network/dio_client.dart';
 import '../../../models/activity.dart';
 import '../../../models/activity_draft.dart';
 import '../../../models/contact.dart';
@@ -66,6 +67,18 @@ class _ActivityEditScreenState extends ConsumerState<ActivityEditScreen> {
     }
 
     final formState = ref.watch(activityFormControllerProvider);
+
+    // Antes un error de guardado (p. ej. un tipo que el backend todavía no
+    // reconoce) fallaba en silencio: `saved` quedaba null y no pasaba nada
+    // visible — ni mensaje ni navegación. Con este listener, cualquier falla
+    // de _submit() se muestra igual que ya se hace en login_screen.dart.
+    ref.listen(activityFormControllerProvider, (previous, next) {
+      final error = next.hasError ? next.error : null;
+      if (error != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(mapApiError(error))));
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(title: Text(_isEditing ? 'Editar actividad' : 'Nueva actividad')),
